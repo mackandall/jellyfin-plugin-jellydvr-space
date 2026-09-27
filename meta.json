@@ -1,0 +1,16 @@
+{
+  "category": "Live TV",
+  "changelog": "",
+  "description": "Keeps the DVR recordings drive from filling up: when free space drops below a floor, moves recordings (with their commercial marks) to archive storage you list, or deletes them, in the order you choose. Starts in preview mode.",
+  "guid": "c709ebd6-431f-493c-93cf-1c345db59d49",
+  "name": "JellyDVR Space",
+  "overview": "",
+  "owner": "",
+  "targetAbi": "12.0.0.0",
+  "timestamp": "0001-01-01T00:00:00.0000000Z",
+  "version": "1.0.0.0",
+  "status": "Active",
+  "autoUpdate": false,
+  "imagePath": "icon.png",
+  "assemblies": []
+}

@@ -1,0 +1,297 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <title>JellyDVR Space</title>
+</head>
+<body>
+<div id="DvrSpaceConfigPage"
+     data-role="page"
+     class="page type-interior pluginConfigurationPage"
+     data-require="emby-input,emby-button,emby-checkbox,emby-select">
+    <div data-role="content">
+        <div class="content-primary">
+
+            <div class="verticalSection">
+                <h2>Recordings drive</h2>
+                <div id="DsDrive" class="fieldDescription">Loading…</div>
+                <div style="height:14px;border-radius:7px;background:rgba(128,128,128,.25);overflow:hidden;margin:.6em 0 .4em;">
+                    <div id="DsBar" style="height:100%;width:0;background:#15803d;"></div>
+                </div>
+                <div id="DsWarning" class="fieldDescription" style="color:#f59e0b;white-space:pre-line;"></div>
+                <button is="emby-button" type="button" id="DsRun" class="raised emby-button" style="margin-top:.6em;">
+                    <span>Check now</span>
+                </button>
+                <span id="DsRunResult" class="fieldDescription" style="margin-left:1em;"></span>
+            </div>
+
+            <div class="verticalSection">
+                <h2 id="DsPlanTitle">Plan</h2>
+                <div class="fieldDescription" id="DsPlanNote"></div>
+                <table style="width:100%;border-collapse:collapse;font-size:.9em;">
+                    <thead><tr style="text-align:left;opacity:.7;">
+                        <th style="padding:.3em;">Recording</th><th>Size</th><th>Watched</th><th>Action</th><th>Where</th><th></th>
+                    </tr></thead>
+                    <tbody id="DsPlan"></tbody>
+                </table>
+                <div id="DsSkipped" class="fieldDescription" style="margin-top:.6em;white-space:pre-line;"></div>
+            </div>
+
+            <form id="DvrSpaceConfigForm">
+                <div class="verticalSection">
+                    <h2>Settings</h2>
+
+                    <div class="selectContainer">
+                        <label class="selectLabel" for="DsMode">Mode</label>
+                        <select is="emby-select" id="DsMode" class="emby-select-withcolor emby-select">
+                            <option value="preview">Preview: only show what would happen</option>
+                            <option value="active">Active: move / delete for real</option>
+                        </select>
+                    </div>
+
+                    <div class="inputContainer">
+                        <label class="inputLabel inputLabelUnfocused" for="DsKeepFree">Keep at least this much free on the recordings drive (GB)</label>
+                        <input id="DsKeepFree" type="number" min="1" is="emby-input" />
+                    </div>
+
+                    <div class="inputContainer">
+                        <label class="inputLabel inputLabelUnfocused" for="DsInterval">Check every (minutes)</label>
+                        <input id="DsInterval" type="number" min="1" max="1440" is="emby-input" />
+                        <div class="fieldDescription">It also checks two minutes after each recording finishes.</div>
+                    </div>
+
+                    <div class="selectContainer">
+                        <label class="selectLabel" for="DsAction">To make room</label>
+                        <select is="emby-select" id="DsAction" class="emby-select-withcolor emby-select">
+                            <option value="move">Move recordings to archive storage</option>
+                            <option value="delete">Delete recordings</option>
+                            <option value="move-unwatched-delete-watched">Move unwatched, delete watched</option>
+                        </select>
+                    </div>
+
+                    <div class="selectContainer">
+                        <label class="selectLabel" for="DsOrder">Which recordings go first</label>
+                        <select is="emby-select" id="DsOrder" class="emby-select-withcolor emby-select">
+                            <option value="watched-then-oldest">Watched first, then oldest</option>
+                            <option value="oldest">Oldest first</option>
+                            <option value="movies-first">Movies first, then TV (oldest first)</option>
+                        </select>
+                        <div class="fieldDescription">Never touched: recordings marked Keep, anything still recording, anything being played.</div>
+                    </div>
+
+                    <div class="selectContainer">
+                        <label class="selectLabel" for="DsWhenFull">When every archive location is full or unreachable</label>
+                        <select is="emby-select" id="DsWhenFull" class="emby-select-withcolor emby-select">
+                            <option value="stop">Stop and warn</option>
+                            <option value="delete">Delete instead</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="verticalSection">
+                    <h2>Archive storage</h2>
+                    <div class="fieldDescription" style="margin-bottom:.8em;">
+                        Tried in order: a recording goes to the first location for its kind that keeps its own free-space floor.
+                        Each folder must be inside one of your libraries (e.g. a TV Shows or Movies folder), or moved
+                        recordings would disappear from Jellyfin. Recordings keep their show / season folders below it.
+                    </div>
+                    <div id="DsTargets"></div>
+                    <button is="emby-button" type="button" id="DsAddTarget" class="emby-button">
+                        <span>+ Add location</span>
+                    </button>
+                </div>
+
+                <div>
+                    <button is="emby-button" type="submit" class="raised button-submit block emby-button">
+                        <span>Save</span>
+                    </button>
+                </div>
+            </form>
+
+            <div class="verticalSection">
+                <h2>Recent actions</h2>
+                <div id="DsRecent" class="fieldDescription" style="white-space:pre-line;">None yet.</div>
+            </div>
+
+            <div class="verticalSection">
+                <h2>Marked Keep</h2>
+                <div id="DsKeepList" class="fieldDescription" style="white-space:pre-line;">None.</div>
+            </div>
+        </div>
+    </div>
+
+    <script type="text/javascript">
+        (function () {
+            var pluginUniqueId = "c709ebd6-431f-493c-93cf-1c345db59d49";
+            var GB = 1024 * 1024 * 1024;
+            var page = document.querySelector("#DvrSpaceConfigPage");
+            var targets = [];
+
+            function gb(bytes) { return (bytes / GB).toFixed(bytes < 10 * GB ? 1 : 0) + " GB"; }
+            function esc(s) { var d = document.createElement("div"); d.textContent = s == null ? "" : String(s); return d.innerHTML; }
+            function api(method, path) {
+                return ApiClient.ajax({ type: method, url: ApiClient.getUrl(path), dataType: "json" });
+            }
+
+            function renderTargets() {
+                var host = page.querySelector("#DsTargets");
+                host.innerHTML = "";
+                targets.forEach(function (t, i) {
+                    var row = document.createElement("div");
+                    row.style.cssText = "display:flex;gap:.5em;align-items:center;flex-wrap:wrap;margin-bottom:.6em;";
+                    row.innerHTML =
+                        '<span style="width:1.5em;opacity:.7;">' + (i + 1) + '.</span>' +
+                        '<input is="emby-input" type="text" data-f="Path" style="flex:1;min-width:16em;" placeholder="/mnt/nas/TV" value="' + esc(t.Path) + '">' +
+                        '<select is="emby-select" data-f="Kind" class="emby-select-withcolor emby-select" style="width:8em;">' +
+                        ['tv', 'movies', 'both'].map(function (k) {
+                            return '<option value="' + k + '"' + (t.Kind === k ? ' selected' : '') + '>' + { tv: 'TV', movies: 'Movies', both: 'Both' }[k] + '</option>';
+                        }).join('') + '</select>' +
+                        '<label style="opacity:.8;">keep free</label>' +
+                        '<input is="emby-input" type="number" min="0" data-f="KeepFreeGb" style="width:6em;" value="' + esc(t.KeepFreeGb) + '"><span>GB</span>' +
+                        '<button is="emby-button" type="button" class="emby-button" data-a="up" title="Move up">▲</button>' +
+                        '<button is="emby-button" type="button" class="emby-button" data-a="down" title="Move down">▼</button>' +
+                        '<button is="emby-button" type="button" class="emby-button" data-a="remove" title="Remove">✕</button>';
+                    row.querySelectorAll("[data-f]").forEach(function (el) {
+                        el.addEventListener("change", function () {
+                            t[el.getAttribute("data-f")] = el.getAttribute("data-f") === "KeepFreeGb" ? (parseInt(el.value, 10) || 0) : el.value.trim();
+                        });
+                    });
+                    row.querySelectorAll("[data-a]").forEach(function (b) {
+                        b.addEventListener("click", function () {
+                            var a = b.getAttribute("data-a");
+                            if (a === "remove") { targets.splice(i, 1); }
+                            if (a === "up" && i > 0) { targets.splice(i - 1, 0, targets.splice(i, 1)[0]); }
+                            if (a === "down" && i < targets.length - 1) { targets.splice(i + 1, 0, targets.splice(i, 1)[0]); }
+                            renderTargets();
+                        });
+                    });
+                    host.appendChild(row);
+                });
+            }
+
+            function renderStatus(s) {
+                var plan = s.Plan;
+                var drive = page.querySelector("#DsDrive");
+                if (!plan) {
+                    drive.textContent = "Not checked yet. Use Check now.";
+                    return;
+                }
+                var used = plan.TotalBytes - plan.FreeBytes;
+                drive.textContent = gb(plan.FreeBytes) + " free of " + gb(plan.TotalBytes) + " (keeping at least " + gb(plan.KeepFreeBytes) +
+                    ") · recordings folders: " + (s.ManagedRoots || []).join(", ") + " · checked " + new Date(plan.CreatedUtc).toLocaleString();
+                var bar = page.querySelector("#DsBar");
+                bar.style.width = (plan.TotalBytes ? Math.min(100, used / plan.TotalBytes * 100) : 0) + "%";
+                bar.style.background = plan.NeededBytes > 0 ? "#c62828" : "#15803d";
+
+                var warnings = [];
+                if (plan.Warning) { warnings.push(plan.Warning); }
+                (plan.Targets || []).forEach(function (t) {
+                    if (t.Problem) { warnings.push("Archive " + t.Path + ": " + t.Problem); }
+                });
+                page.querySelector("#DsWarning").textContent = warnings.join("\n");
+
+                var title = page.querySelector("#DsPlanTitle");
+                var note = page.querySelector("#DsPlanNote");
+                var body = page.querySelector("#DsPlan");
+                body.innerHTML = "";
+                if (plan.NeededBytes <= 0) {
+                    title.textContent = "Plan";
+                    note.textContent = "Enough free space: nothing needs to move.";
+                } else {
+                    title.textContent = plan.Mode === "active" ? "Plan (active: being carried out)" : "Plan (preview: nothing done yet)";
+                    note.textContent = "Needs " + gb(plan.NeededBytes) + " freed; these " + plan.Items.length + " recording(s) free " + gb(plan.PlannedBytes) + ".";
+                }
+                (plan.Items || []).forEach(function (it) {
+                    var tr = document.createElement("tr");
+                    tr.style.borderTop = "1px solid rgba(128,128,128,.2)";
+                    tr.innerHTML = '<td style="padding:.3em;">' + esc(it.Name) + '</td><td>' + gb(it.Bytes) + '</td><td>' + (it.Watched ? "yes" : "") +
+                        '</td><td>' + esc(it.Action) + '</td><td>' + esc(it.Destination || it.Why) + '</td>' +
+                        '<td><button is="emby-button" type="button" class="emby-button" style="padding:.2em .8em;">Keep</button></td>';
+                    tr.querySelector("button").addEventListener("click", function () {
+                        api("POST", "JellyDvrSpace/Keep/" + it.ItemId).then(run);
+                    });
+                    body.appendChild(tr);
+                });
+                page.querySelector("#DsSkipped").textContent = (plan.Skipped || []).length
+                    ? "Left alone: " + plan.Skipped.map(function (x) { return x.Name + " (" + x.Why + ")"; }).join("; ")
+                    : "";
+
+                page.querySelector("#DsRecent").textContent = (s.Recent || []).length
+                    ? s.Recent.slice(0, 30).map(function (r) {
+                        return new Date(r.Time).toLocaleString() + " · " + (r.Ok ? "" : "FAILED ") + r.Action + " " + r.Name + " (" + gb(r.Bytes) + ")" +
+                            (r.To ? " → " + r.To : "") + (r.Error ? " · " + r.Error : "");
+                    }).join("\n")
+                    : "None yet.";
+
+                var keepHost = page.querySelector("#DsKeepList");
+                keepHost.innerHTML = "";
+                if (!(s.Keep || []).length) { keepHost.textContent = "None."; }
+                (s.Keep || []).forEach(function (k) {
+                    var line = document.createElement("div");
+                    line.innerHTML = esc(k.Name) + ' <button is="emby-button" type="button" class="emby-button" style="padding:.1em .6em;">Remove</button>';
+                    line.querySelector("button").addEventListener("click", function () {
+                        api("DELETE", "JellyDvrSpace/Keep/" + k.Id).then(load);
+                    });
+                    keepHost.appendChild(line);
+                });
+            }
+
+            function load() {
+                return api("GET", "JellyDvrSpace/Status").then(renderStatus);
+            }
+
+            function run() {
+                var result = page.querySelector("#DsRunResult");
+                result.textContent = "Checking…";
+                return api("POST", "JellyDvrSpace/Run").then(function () {
+                    result.textContent = "";
+                    return load();
+                }).catch(function () { result.textContent = "Check failed."; });
+            }
+
+            page.addEventListener("pageshow", function () {
+                Dashboard.showLoadingMsg();
+                ApiClient.getPluginConfiguration(pluginUniqueId).then(function (config) {
+                    page.querySelector("#DsMode").value = config.Mode || "preview";
+                    page.querySelector("#DsKeepFree").value = config.KeepFreeGb || 100;
+                    page.querySelector("#DsInterval").value = config.CheckIntervalMinutes || 15;
+                    page.querySelector("#DsAction").value = config.Action || "move";
+                    page.querySelector("#DsOrder").value = config.Order || "watched-then-oldest";
+                    page.querySelector("#DsWhenFull").value = config.WhenArchiveFull || "stop";
+                    targets = (config.ArchiveTargets || []).map(function (t) { return { Path: t.Path, Kind: (t.Kind || "both").toLowerCase(), KeepFreeGb: t.KeepFreeGb }; });
+                    renderTargets();
+                    Dashboard.hideLoadingMsg();
+                });
+                load();
+            });
+
+            page.querySelector("#DsAddTarget").addEventListener("click", function () {
+                targets.push({ Path: "", Kind: "both", KeepFreeGb: 50 });
+                renderTargets();
+            });
+
+            page.querySelector("#DsRun").addEventListener("click", run);
+
+            page.querySelector("#DvrSpaceConfigForm").addEventListener("submit", function (e) {
+                e.preventDefault();
+                Dashboard.showLoadingMsg();
+                ApiClient.getPluginConfiguration(pluginUniqueId).then(function (config) {
+                    config.Mode = page.querySelector("#DsMode").value;
+                    config.KeepFreeGb = parseInt(page.querySelector("#DsKeepFree").value, 10) || 100;
+                    config.CheckIntervalMinutes = parseInt(page.querySelector("#DsInterval").value, 10) || 15;
+                    config.Action = page.querySelector("#DsAction").value;
+                    config.Order = page.querySelector("#DsOrder").value;
+                    config.WhenArchiveFull = page.querySelector("#DsWhenFull").value;
+                    config.ArchiveTargets = targets.filter(function (t) { return t.Path; });
+                    ApiClient.updatePluginConfiguration(pluginUniqueId, config).then(function (result) {
+                        Dashboard.processPluginConfigurationUpdateResult(result);
+                        run();
+                    });
+                });
+                return false;
+            });
+        })();
+    </script>
+</div>
+</body>
+</html>
