@@ -20,6 +20,8 @@ archives elsewhere are never touched.
   floor. A recording goes to the first one with room. Each must be inside a library, or moved recordings
   would vanish from Jellyfin; the page warns otherwise.
 - **When every archive is full or unreachable** — stop and warn (default), or delete instead.
+- **Live TV buffers** — recordings JellyDVR Live made as live buffers and nobody kept (tagged `Live buffer`)
+  always go first and are deleted, never archived. Category sorting leaves them alone.
 - **Keep** — recordings marked Keep (from the plan table) are never moved or deleted. Recordings still
   being recorded or being played are always left alone.
 

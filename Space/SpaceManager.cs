@@ -266,12 +266,13 @@ public sealed class SpaceManager : BackgroundService
                 users.Any(u => _userDataManager.GetUserData(u, i)?.Played == true)))
             .ToList();
 
-        IEnumerable<Candidate> ordered = cfg.Order switch
+        // JellyDVR Live buffers nobody kept always go first, and are deleted, never archived.
+        IEnumerable<Candidate> ordered = (cfg.Order switch
         {
             PluginConfiguration.OrderOldest => candidates.OrderBy(c => c.Item.DateCreated),
             PluginConfiguration.OrderMoviesFirst => candidates.OrderBy(c => c.Kind == "movies" ? 0 : 1).ThenBy(c => c.Item.DateCreated),
             _ => candidates.OrderBy(c => c.Watched ? 0 : 1).ThenBy(c => c.Item.DateCreated)
-        };
+        }).OrderBy(c => IsLiveBuffer(c.Item) ? 0 : 1);
 
         // Projected free space per archive target as items are assigned to it.
         var projected = plan.Targets.ToDictionary(t => t.Path, t => t.FreeBytes ?? 0);
@@ -296,6 +297,13 @@ public sealed class SpaceManager : BackgroundService
 
             var files = RecordingFiles(c.Item.Path!);
             var size = files.Sum(f => SafeLength(f));
+            if (IsLiveBuffer(c.Item))
+            {
+                plan.Items.Add(PlanItem.From(c, size, PlanItem.ActionDelete, null, "live TV buffer: delete"));
+                freed += size;
+                continue;
+            }
+
             var move = cfg.Action == PluginConfiguration.ActionMove
                 || (cfg.Action == PluginConfiguration.ActionMoveUnwatchedDeleteWatched && !c.Watched);
 
@@ -463,6 +471,9 @@ public sealed class SpaceManager : BackgroundService
         var task = Task.Run(f);
         return task.Wait(FsTimeout) ? (true, task.Result) : (false, default);
     }
+
+    /// <summary>A JellyDVR Live buffer recording nobody has kept (it carries this tag until kept).</summary>
+    internal static bool IsLiveBuffer(BaseItem item) => item.Tags.Contains("Live buffer", StringComparer.OrdinalIgnoreCase);
 
     internal sealed record Candidate(BaseItem Item, string Root, string Kind, bool Watched);
 

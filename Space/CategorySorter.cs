@@ -95,7 +95,7 @@ public sealed class CategorySorter
             .Select(g => g.First())
             .OrderBy(i => i.DateCreated);
 
-        foreach (var item in items)
+        foreach (var item in items.Where(i => !SpaceManager.IsLiveBuffer(i))) // buffers stay put until kept
         {
             var categories = Categories(item);
             var rule = plan.Rules.FirstOrDefault(r => r.Enabled && r.Matches(categories));
