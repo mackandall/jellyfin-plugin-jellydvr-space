@@ -39,14 +39,15 @@
 
             <form id="DvrSpaceConfigForm">
                 <div class="verticalSection">
-                    <h2>Settings</h2>
+                    <h2>Space manager</h2>
 
                     <div class="selectContainer">
-                        <label class="selectLabel" for="DsMode">Mode</label>
+                        <label class="selectLabel" for="DsMode">Space manager</label>
                         <select is="emby-select" id="DsMode" class="emby-select-withcolor emby-select">
-                            <option value="preview">Preview: only show what would happen</option>
-                            <option value="active">Active: move / delete for real</option>
+                            <option value="preview">Preview: only show what would be moved / deleted to free space</option>
+                            <option value="active">Active: move / delete for real to free space</option>
                         </select>
+                        <div class="fieldDescription">Frees room on the recordings drive. Category sorting has its own switch below.</div>
                     </div>
 
                     <div class="inputContainer">
