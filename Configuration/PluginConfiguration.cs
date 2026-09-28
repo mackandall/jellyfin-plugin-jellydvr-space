@@ -17,8 +17,33 @@ public class ArchiveTarget
     public int KeepFreeGb { get; set; } = 50;
 }
 
+/// <summary>
+/// A sorting rule for recordings that land in the DVR's general recording folder (not a movie,
+/// not a series): recordings whose guide categories match are moved to <see cref="Destination"/>.
+/// </summary>
+public class CategoryRule
+{
+    /// <summary>A label for the rule, e.g. "Comedy specials".</summary>
+    public string Name { get; set; } = string.Empty;
+
+    public bool Enabled { get; set; } = true;
+
+    /// <summary>Guide categories (genres), separated by commas; case doesn't matter.</summary>
+    public string Categories { get; set; } = string.Empty;
+
+    /// <summary>True: the recording needs every listed category. False: any one of them.</summary>
+    public bool RequireAll { get; set; }
+
+    /// <summary>Folder to move into, inside a library. Empty: Live TV's movie recording folder.</summary>
+    public string Destination { get; set; } = string.Empty;
+}
+
 public class PluginConfiguration : BasePluginConfiguration
 {
+    public const string SortOff = "off";
+    public const string SortPreview = "preview";
+    public const string SortActive = "active";
+
     public const string ModePreview = "preview";
     public const string ModeActive = "active";
 
@@ -56,4 +81,14 @@ public class PluginConfiguration : BasePluginConfiguration
 
     /// <summary>Recordings marked Keep (library item ids): never moved or deleted.</summary>
     public string[] KeepItemIds { get; set; } = Array.Empty<string>();
+
+    /// <summary>Sorting "other" recordings by guide category: "off", "preview" or "active".</summary>
+    public string SortMode { get; set; } = SortPreview;
+
+    /// <summary>Category rules, tried in order; the first match decides where a recording goes.</summary>
+    public CategoryRule[] CategoryRules { get; set; } =
+    {
+        new() { Name = "Comedy specials", Categories = "Special, Comedy", RequireAll = true },
+        new() { Name = "Sports", Enabled = false, Categories = "Sports, Sports event, Sporting event" }
+    };
 }

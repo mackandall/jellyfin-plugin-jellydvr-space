@@ -13,6 +13,7 @@ public sealed class PluginServiceRegistrator : IPluginServiceRegistrator
 {
     public void RegisterServices(IServiceCollection serviceCollection, IServerApplicationHost applicationHost)
     {
+        serviceCollection.AddSingleton<CategorySorter>();
         serviceCollection.AddSingleton<SpaceManager>();
         serviceCollection.AddHostedService(sp => sp.GetRequiredService<SpaceManager>());
 

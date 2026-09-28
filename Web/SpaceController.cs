@@ -20,15 +20,17 @@ namespace Jellyfin.Plugin.DvrSpace.Web;
 public sealed class SpaceController : ControllerBase
 {
     private readonly SpaceManager _manager;
+    private readonly CategorySorter _sorter;
     private readonly ILibraryManager _libraryManager;
 
-    public SpaceController(SpaceManager manager, ILibraryManager libraryManager)
+    public SpaceController(SpaceManager manager, CategorySorter sorter, ILibraryManager libraryManager)
     {
         _manager = manager;
+        _sorter = sorter;
         _libraryManager = libraryManager;
     }
 
-    /// <summary>The last plan (free space, what would be / was moved or deleted), recent actions.</summary>
+    /// <summary>The last plans (free space; category sorting), recent actions.</summary>
     [HttpGet("Status")]
     public IActionResult Status()
     {
@@ -40,6 +42,7 @@ public sealed class SpaceController : ControllerBase
         {
             ManagedRoots = _manager.ManagedRoots(),
             Plan = _manager.LastPlan,
+            Sort = _sorter.LastPlan,
             Recent = _manager.RecentActions,
             Keep = keep
         });

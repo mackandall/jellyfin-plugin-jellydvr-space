@@ -23,6 +23,23 @@ archives elsewhere are never touched.
 - **Keep** — recordings marked Keep (from the plan table) are never moved or deleted. Recordings still
   being recorded or being played are always left alone.
 
+## Sort by guide category
+
+Jellyfin's DVR files movies and series into their own folders; everything else (comedy specials, one-off
+sports, …) lands in the general recording folder. Category rules move those out by their guide categories
+(the item's genres plus the `<genre>` entries in the `.nfo` the DVR writes beside each recording):
+
+- **Sorting** — *Off*, *Preview* (default: shows what would move) or *Active*.
+- **Rules** — tried in order; the first one a recording matches decides where it goes. Each has a name,
+  categories (comma separated), *any of them* / *all of them*, and a destination folder inside a library
+  (empty = Live TV's movie recording folder). Ships with *Comedy specials* (`Special, Comedy`, all of them →
+  movie folder) on, and *Sports* off: give it a destination (e.g. a Sports library folder) before turning it on, or it would use the movie folder.
+- Recordings no rule matches stay where they are. Recordings still recording, being played, open in another
+  program (e.g. Comskip still reading them) or marked Keep are left for the next check.
+
+Sorting runs just before each space check (every few minutes and two minutes after a recording finishes),
+and moves the same way as an archive move (below).
+
 ## How a move works
 
 The recording and its sidecars (`.edl`, `.nfo`, `-thumb.jpg`, …) are copied into the same show/season

@@ -101,6 +101,41 @@
                     </button>
                 </div>
 
+                <div class="verticalSection">
+                    <h2>Sort by guide category</h2>
+                    <div class="fieldDescription" style="margin-bottom:.8em;">
+                        Jellyfin files movies and series in their own folders; everything else (comedy specials, one-off games, …)
+                        lands in the general recording folder. Rules here move those by their guide categories, tried in order:
+                        the first rule a recording matches decides where it goes. Recordings no rule matches stay put.
+                        Empty destination = the movie recording folder. Checked with the space check (every few minutes and
+                        after each recording).
+                    </div>
+
+                    <div class="selectContainer">
+                        <label class="selectLabel" for="DsSortMode">Sorting</label>
+                        <select is="emby-select" id="DsSortMode" class="emby-select-withcolor emby-select">
+                            <option value="off">Off</option>
+                            <option value="preview">Preview: only show what would move</option>
+                            <option value="active">Active: move for real</option>
+                        </select>
+                    </div>
+
+                    <div id="DsRules"></div>
+                    <button is="emby-button" type="button" id="DsAddRule" class="emby-button">
+                        <span>+ Add rule</span>
+                    </button>
+
+                    <h3 id="DsSortTitle" style="margin-top:1.2em;">Would move</h3>
+                    <div id="DsSortWarning" class="fieldDescription" style="color:#f59e0b;white-space:pre-line;"></div>
+                    <table style="width:100%;border-collapse:collapse;font-size:.9em;">
+                        <thead><tr style="text-align:left;opacity:.7;">
+                            <th style="padding:.3em;">Recording</th><th>Rule</th><th>Categories</th><th>To</th>
+                        </tr></thead>
+                        <tbody id="DsSort"></tbody>
+                    </table>
+                    <div id="DsSortNote" class="fieldDescription" style="margin-top:.6em;white-space:pre-line;"></div>
+                </div>
+
                 <div>
                     <button is="emby-button" type="submit" class="raised button-submit block emby-button">
                         <span>Save</span>
@@ -126,6 +161,7 @@
             var GB = 1024 * 1024 * 1024;
             var page = document.querySelector("#DvrSpaceConfigPage");
             var targets = [];
+            var rules = [];
 
             function gb(bytes) { return (bytes / GB).toFixed(bytes < 10 * GB ? 1 : 0) + " GB"; }
             function esc(s) { var d = document.createElement("div"); d.textContent = s == null ? "" : String(s); return d.innerHTML; }
@@ -169,7 +205,78 @@
                 });
             }
 
+            function renderRules() {
+                var host = page.querySelector("#DsRules");
+                host.innerHTML = "";
+                rules.forEach(function (r, i) {
+                    var row = document.createElement("div");
+                    row.style.cssText = "display:flex;gap:.5em;align-items:center;flex-wrap:wrap;margin-bottom:.8em;padding-bottom:.6em;border-bottom:1px solid rgba(128,128,128,.2);";
+                    row.innerHTML =
+                        '<label style="display:flex;align-items:center;gap:.3em;"><input type="checkbox" data-f="Enabled"' + (r.Enabled ? ' checked' : '') + '> on</label>' +
+                        '<input is="emby-input" type="text" data-f="Name" style="width:11em;" placeholder="Name" value="' + esc(r.Name) + '">' +
+                        '<input is="emby-input" type="text" data-f="Categories" style="flex:1;min-width:12em;" placeholder="Categories, e.g. Special, Comedy" value="' + esc(r.Categories) + '">' +
+                        '<select is="emby-select" data-f="RequireAll" class="emby-select-withcolor emby-select" style="width:9em;">' +
+                        '<option value="false"' + (r.RequireAll ? '' : ' selected') + '>any of them</option>' +
+                        '<option value="true"' + (r.RequireAll ? ' selected' : '') + '>all of them</option></select>' +
+                        '<input is="emby-input" type="text" data-f="Destination" style="flex:1;min-width:14em;" placeholder="(movie recording folder)" value="' + esc(r.Destination) + '">' +
+                        '<button is="emby-button" type="button" class="emby-button" data-a="up" title="Move up">▲</button>' +
+                        '<button is="emby-button" type="button" class="emby-button" data-a="down" title="Move down">▼</button>' +
+                        '<button is="emby-button" type="button" class="emby-button" data-a="remove" title="Remove">✕</button>';
+                    row.querySelectorAll("[data-f]").forEach(function (el) {
+                        el.addEventListener("change", function () {
+                            var f = el.getAttribute("data-f");
+                            r[f] = f === "Enabled" ? el.checked : f === "RequireAll" ? el.value === "true" : el.value.trim();
+                        });
+                    });
+                    row.querySelectorAll("[data-a]").forEach(function (b) {
+                        b.addEventListener("click", function () {
+                            var a = b.getAttribute("data-a");
+                            if (a === "remove") { rules.splice(i, 1); }
+                            if (a === "up" && i > 0) { rules.splice(i - 1, 0, rules.splice(i, 1)[0]); }
+                            if (a === "down" && i < rules.length - 1) { rules.splice(i + 1, 0, rules.splice(i, 1)[0]); }
+                            renderRules();
+                        });
+                    });
+                    host.appendChild(row);
+                });
+            }
+
+            function renderSort(sort) {
+                var body = page.querySelector("#DsSort");
+                var title = page.querySelector("#DsSortTitle");
+                var note = page.querySelector("#DsSortNote");
+                body.innerHTML = "";
+                if (!sort || sort.Mode === "off") {
+                    title.textContent = "Would move";
+                    page.querySelector("#DsSortWarning").textContent = "";
+                    note.textContent = sort ? "Sorting is off." : "Not checked yet. Use Check now.";
+                    return;
+                }
+                title.textContent = sort.Mode === "active" ? "Being moved" : "Would move (preview: nothing done)";
+                var warnings = [];
+                if (sort.Warning) { warnings.push(sort.Warning); }
+                (sort.Rules || []).forEach(function (r) {
+                    if (r.Enabled && r.Problem) { warnings.push("Rule \"" + r.Name + "\": " + r.Problem); }
+                });
+                page.querySelector("#DsSortWarning").textContent = warnings.join("\n");
+                (sort.Items || []).forEach(function (it) {
+                    var tr = document.createElement("tr");
+                    tr.style.borderTop = "1px solid rgba(128,128,128,.2)";
+                    tr.innerHTML = '<td style="padding:.3em;">' + esc(it.Name) + '</td><td>' + esc(it.Rule) + '</td><td>' + esc(it.Categories) +
+                        '</td><td>' + esc(it.Destination) + '</td>';
+                    body.appendChild(tr);
+                });
+                var lines = [];
+                if (!(sort.Items || []).length) { lines.push("Nothing to move."); }
+                if ((sort.Skipped || []).length) {
+                    lines.push("Left alone: " + sort.Skipped.map(function (x) { return x.Name + " (" + x.Why + ")"; }).join("; "));
+                }
+                lines.push(sort.Unmatched + " other recording(s) in " + sort.Source + " match no rule and stay there.");
+                note.textContent = lines.join("\n");
+            }
+
             function renderStatus(s) {
+                renderSort(s.Sort);
                 var plan = s.Plan;
                 var drive = page.querySelector("#DsDrive");
                 if (!plan) {
@@ -260,6 +367,11 @@
                     page.querySelector("#DsWhenFull").value = config.WhenArchiveFull || "stop";
                     targets = (config.ArchiveTargets || []).map(function (t) { return { Path: t.Path, Kind: (t.Kind || "both").toLowerCase(), KeepFreeGb: t.KeepFreeGb }; });
                     renderTargets();
+                    page.querySelector("#DsSortMode").value = config.SortMode || "preview";
+                    rules = (config.CategoryRules || []).map(function (r) {
+                        return { Name: r.Name, Enabled: r.Enabled !== false, Categories: r.Categories, RequireAll: !!r.RequireAll, Destination: r.Destination };
+                    });
+                    renderRules();
                     Dashboard.hideLoadingMsg();
                 });
                 load();
@@ -268,6 +380,11 @@
             page.querySelector("#DsAddTarget").addEventListener("click", function () {
                 targets.push({ Path: "", Kind: "both", KeepFreeGb: 50 });
                 renderTargets();
+            });
+
+            page.querySelector("#DsAddRule").addEventListener("click", function () {
+                rules.push({ Name: "", Enabled: true, Categories: "", RequireAll: false, Destination: "" });
+                renderRules();
             });
 
             page.querySelector("#DsRun").addEventListener("click", run);
@@ -283,6 +400,8 @@
                     config.Order = page.querySelector("#DsOrder").value;
                     config.WhenArchiveFull = page.querySelector("#DsWhenFull").value;
                     config.ArchiveTargets = targets.filter(function (t) { return t.Path; });
+                    config.SortMode = page.querySelector("#DsSortMode").value;
+                    config.CategoryRules = rules.filter(function (r) { return r.Name || r.Categories; });
                     ApiClient.updatePluginConfiguration(pluginUniqueId, config).then(function (result) {
                         Dashboard.processPluginConfigurationUpdateResult(result);
                         run();

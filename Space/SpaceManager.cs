@@ -18,6 +18,7 @@ using MediaBrowser.Model.LiveTv;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using static Jellyfin.Plugin.DvrSpace.Space.RecordingFileOps;
 
 namespace Jellyfin.Plugin.DvrSpace.Space;
 
@@ -36,11 +37,6 @@ public sealed class SpaceManager : BackgroundService
     private static readonly TimeSpan FsTimeout = TimeSpan.FromSeconds(15);
     private static readonly TimeSpan AfterRecordingDelay = TimeSpan.FromMinutes(2);
 
-    private static readonly HashSet<string> VideoExtensions = new(StringComparer.OrdinalIgnoreCase)
-    {
-        ".ts", ".mkv", ".mp4", ".m4v", ".m2ts", ".mpg", ".mpeg", ".avi", ".wtv", ".mov"
-    };
-
     private readonly ILogger<SpaceManager> _logger;
     private readonly ILibraryManager _libraryManager;
     private readonly IUserManager _userManager;
@@ -49,6 +45,7 @@ public sealed class SpaceManager : BackgroundService
     private readonly IConfigurationManager _config;
     private readonly ILibraryMonitor _libraryMonitor;
     private readonly IServiceProvider _serviceProvider;
+    private readonly CategorySorter _sorter;
     private readonly SemaphoreSlim _runLock = new(1, 1);
     private readonly ConcurrentQueue<ActionRecord> _recent = new();
     private Timer? _soon;
@@ -61,7 +58,8 @@ public sealed class SpaceManager : BackgroundService
         ISessionManager sessionManager,
         IConfigurationManager config,
         ILibraryMonitor libraryMonitor,
-        IServiceProvider serviceProvider)
+        IServiceProvider serviceProvider,
+        CategorySorter sorter)
     {
         _logger = logger;
         _libraryManager = libraryManager;
@@ -71,6 +69,7 @@ public sealed class SpaceManager : BackgroundService
         _config = config;
         _libraryMonitor = libraryMonitor;
         _serviceProvider = serviceProvider;
+        _sorter = sorter;
     }
 
     private static PluginConfiguration Config => Plugin.Instance?.Configuration ?? new PluginConfiguration();
@@ -140,6 +139,8 @@ public sealed class SpaceManager : BackgroundService
         try
         {
             var cfg = Config;
+            await Task.Run(() => Sort(cfg, reason, ct), ct).ConfigureAwait(false);
+
             var plan = await Task.Run(() => BuildPlan(cfg), ct).ConfigureAwait(false);
             plan.Reason = reason;
             LastPlan = plan;
@@ -169,6 +170,39 @@ public sealed class SpaceManager : BackgroundService
         finally
         {
             _runLock.Release();
+        }
+    }
+
+    // Category sorting runs first, so the space check sees recordings where they now live.
+    private void Sort(PluginConfiguration cfg, string reason, CancellationToken ct)
+    {
+        var plan = _sorter.BuildPlan(cfg);
+        if (plan.Items.Count == 0)
+        {
+            return;
+        }
+
+        _logger.LogInformation("Category sort ({Reason}): {Count} recording(s) to sort{Mode}", reason, plan.Items.Count,
+            cfg.SortMode == PluginConfiguration.SortActive ? string.Empty : " (preview: nothing done)");
+        if (cfg.SortMode != PluginConfiguration.SortActive)
+        {
+            return;
+        }
+
+        foreach (var record in _sorter.Execute(plan, ct))
+        {
+            Remember(record);
+        }
+
+        // Look again so the settings page shows what's left rather than what was just done.
+        _sorter.BuildPlan(cfg);
+    }
+
+    private void Remember(ActionRecord record)
+    {
+        _recent.Enqueue(record);
+        while (_recent.Count > 200 && _recent.TryDequeue(out _))
+        {
         }
     }
 
@@ -372,7 +406,7 @@ public sealed class SpaceManager : BackgroundService
             {
                 if (item.Action == PlanItem.ActionMove && item.Destination is { } dest)
                 {
-                    MoveRecording(item.Path, item.Root, dest);
+                    MoveRecording(item.Path, item.Root, dest, _libraryMonitor, _logger);
                 }
                 else if (item.Action == PlanItem.ActionDelete)
                 {
@@ -390,69 +424,8 @@ public sealed class SpaceManager : BackgroundService
                 _logger.LogWarning(ex, "Disk space: could not {Action} {Path}", item.Action, item.Path);
             }
 
-            _recent.Enqueue(record);
-            while (_recent.Count > 200 && _recent.TryDequeue(out _))
-            {
-            }
+            Remember(record);
         }
-    }
-
-    /// <summary>
-    /// Moves one recording and its sidecars (.edl, .nfo, -thumb.jpg, …) into
-    /// <paramref name="destDir"/>, copying the show/season .nfo and artwork there if missing.
-    /// Copies to a temporary name, checks the size, then renames and removes the original, so
-    /// a failure part-way never loses the recording. Leaves folders emptied of recordings tidy.
-    /// </summary>
-    private void MoveRecording(string videoPath, string root, string destDir)
-    {
-        var files = RecordingFiles(videoPath);
-        var conflicts = files.Select(f => Path.Combine(destDir, Path.GetFileName(f))).Where(File.Exists).ToList();
-        if (conflicts.Count > 0)
-        {
-            throw new IOException($"already exists at the destination: {Path.GetFileName(conflicts[0])}");
-        }
-
-        Directory.CreateDirectory(destDir);
-        CopyFolderMetadata(Path.GetDirectoryName(videoPath)!, root, destDir);
-
-        // The video last, so a half-copied move leaves no playable duplicate behind.
-        var copied = new List<string>();
-        try
-        {
-            foreach (var src in files.OrderBy(f => f == videoPath ? 1 : 0))
-            {
-                var dest = Path.Combine(destDir, Path.GetFileName(src));
-                var temp = dest + ".jdvrpart";
-                File.Copy(src, temp, overwrite: true);
-                if (new FileInfo(temp).Length != new FileInfo(src).Length)
-                {
-                    File.Delete(temp);
-                    throw new IOException($"copy of {Path.GetFileName(src)} came out the wrong size");
-                }
-
-                File.Move(temp, dest);
-                copied.Add(dest);
-            }
-        }
-        catch
-        {
-            foreach (var c in copied)
-            {
-                TryDelete(c);
-            }
-
-            throw;
-        }
-
-        foreach (var src in files)
-        {
-            File.Delete(src);
-        }
-
-        var srcDir = Path.GetDirectoryName(videoPath)!;
-        TidyEmptiedFolders(srcDir, root);
-        _libraryMonitor.ReportFileSystemChanged(srcDir);
-        _libraryMonitor.ReportFileSystemChanged(destDir);
     }
 
     private void DeleteRecording(BaseItem item)
@@ -466,105 +439,10 @@ public sealed class SpaceManager : BackgroundService
             TryDelete(f); // sidecars Jellyfin leaves behind (.edl, Comskip's .txt, …)
         }
 
-        TidyEmptiedFolders(Path.GetDirectoryName(videoPath)!, root);
-    }
-
-    // Show/season-level metadata (tvshow.nfo, season.nfo, folder.jpg…) that isn't another
-    // recording's sidecar, copied to the destination only where missing.
-    private static void CopyFolderMetadata(string srcDir, string root, string destDir)
-    {
-        var dir = srcDir;
-        var dest = destDir;
-        while (IsUnder(dir, root))
-        {
-            var videos = Directory.GetFiles(dir).Where(IsVideo).Select(Path.GetFileNameWithoutExtension).ToList();
-            foreach (var f in Directory.GetFiles(dir))
-            {
-                var name = Path.GetFileName(f);
-                if (IsVideo(f) || videos.Any(v => BelongsTo(name, v!)) || File.Exists(Path.Combine(dest, name)))
-                {
-                    continue;
-                }
-
-                File.Copy(f, Path.Combine(dest, name));
-            }
-
-            dir = Path.GetDirectoryName(dir)!;
-            dest = Path.GetDirectoryName(dest)!;
-        }
-    }
-
-    // After the last recording leaves a season (and then show) folder, remove what's left of
-    // it (only metadata) so the library doesn't keep an empty season or show.
-    private void TidyEmptiedFolders(string dir, string root)
-    {
-        while (IsUnder(dir, root))
-        {
-            if (Directory.EnumerateFiles(dir, "*", SearchOption.AllDirectories).Any(IsVideo))
-            {
-                return;
-            }
-
-            try
-            {
-                Directory.Delete(dir, recursive: true);
-            }
-            catch (IOException ex)
-            {
-                _logger.LogDebug(ex, "Could not remove emptied folder {Dir}", dir);
-                return;
-            }
-
-            dir = Path.GetDirectoryName(dir)!;
-        }
+        TidyEmptiedFolders(Path.GetDirectoryName(videoPath)!, root, _logger);
     }
 
     // ---- helpers ---------------------------------------------------------------------------
-
-    /// <summary>The recording plus its sidecars: same base name followed by "." or "-".</summary>
-    private static List<string> RecordingFiles(string videoPath)
-    {
-        var dir = Path.GetDirectoryName(videoPath)!;
-        var baseName = Path.GetFileNameWithoutExtension(videoPath);
-        return Directory.GetFiles(dir)
-            .Where(f => f == videoPath || BelongsTo(Path.GetFileName(f), baseName))
-            .Where(f => !f.EndsWith(".jdvrpart", StringComparison.Ordinal))
-            .ToList();
-    }
-
-    private static bool BelongsTo(string fileName, string baseName) =>
-        fileName.StartsWith(baseName + ".", StringComparison.Ordinal) || fileName.StartsWith(baseName + "-", StringComparison.Ordinal);
-
-    private static bool IsVideo(string path) => VideoExtensions.Contains(Path.GetExtension(path));
-
-    private static bool IsUnder(string path, string root) =>
-        path.StartsWith(root.TrimEnd('/') + "/", StringComparison.Ordinal);
-
-    private static long SafeLength(string path)
-    {
-        try
-        {
-            return new FileInfo(path).Length;
-        }
-        catch (IOException)
-        {
-            return 0;
-        }
-    }
-
-    private static void TryDelete(string path)
-    {
-        try
-        {
-            File.Delete(path);
-        }
-        catch (IOException)
-        {
-        }
-        catch (UnauthorizedAccessException)
-        {
-        }
-    }
 
     private static (long Free, long Total)? FreeSpace(string path)
     {
