@@ -287,7 +287,9 @@
 
       var button;
       if (choices.InFlight) {
-        button = buildMenuItem('jdvrspace-moving', 'hourglass_top', 'Moving to archive\u2026', function () {});
+        var p = choices.Progress;
+        var pct = p && p.Bytes > 0 ? Math.min(99, Math.floor(p.CopiedBytes * 100 / p.Bytes)) : 0;
+        button = buildMenuItem('jdvrspace-moving', 'hourglass_top', p && !p.Started ? 'Waiting to move to the archive\u2026' : 'Moving to archive\u2026 ' + pct + '%', function () {});
         button.disabled = true;
       } else {
         button = buildMenuItem('jdvrspace-archive', 'drive_file_move', 'Move to archive\u2026', function () {
@@ -306,6 +308,103 @@
       scroller.appendChild(button);
     });
   }
+
+  // ---- cards of recordings being moved -------------------------------------------------
+  /*
+   * A recording on its way to the archive (from this menu, JDVR or the space manager) gets
+   * blue stripes drifting over its card with "Moving N%" and a progress strip, and a pulsing
+   * tag in list rows: the same look as the Comskip plugin's "Cutting". Admins only (GET
+   * /JellyDvrSpace/Moving): every 2 s while something moves, else every 10 s.
+   */
+  var WORK_CSS = [
+    '.jdvr-work{position:absolute;top:0;left:0;right:0;bottom:0;z-index:3;pointer-events:none;overflow:hidden;display:flex;align-items:center;justify-content:center;background-color:rgba(0,0,0,.45);background-image:repeating-linear-gradient(-45deg,rgba(var(--jw),.28) 0 10px,transparent 10px 28px);background-size:39.6px 39.6px;animation:jdvr-drift 1.2s linear infinite}',
+    '@keyframes jdvr-drift{from{background-position:0 0}to{background-position:39.6px 0}}',
+    '@keyframes jdvr-pulse{0%,100%{opacity:1}50%{opacity:.5}}',
+    '.jdvr-work-label{background:rgba(0,0,0,.6);color:#fff;font-weight:700;font-size:13px;padding:2px 8px;border-radius:6px;white-space:nowrap}',
+    '.jdvr-work-bar{position:absolute;left:0;right:0;bottom:0;height:5px;background:rgba(0,0,0,.6)}',
+    '.jdvr-work-bar i{display:block;height:100%;background:rgb(var(--jw));transition:width 1.5s}',
+    '.jdvr-work-pill{display:inline-block;margin-left:10px;padding:2px 8px;border-radius:999px;font-size:12px;font-weight:700;color:#fff;background:rgb(var(--jw));animation:jdvr-pulse 1.4s ease-in-out infinite;vertical-align:middle}',
+    '.jdvr-work-move{--jw:0,164,220}',
+    '@media (prefers-reduced-motion:reduce){.jdvr-work,.jdvr-work-pill{animation:none}}'
+  ].join('\n');
+  var moving = {};
+  var movingAt = 0;
+
+  function plainId(id) {
+    return (id || '').replace(/-/g, '').toLowerCase();
+  }
+
+  function refreshMoving() {
+    var apiClient = window.ApiClient;
+    var wait = Object.keys(moving).length ? 2000 : 10000;
+    if (document.hidden || !apiClient || !apiClient.getCurrentUserId || !apiClient.getCurrentUserId() || Date.now() - movingAt < wait - 100) {
+      return;
+    }
+    movingAt = Date.now();
+    checkIsAdmin().then(function (admin) {
+      if (!admin) {
+        return;
+      }
+      return apiClient.ajax({ type: 'GET', url: apiClient.getUrl('JellyDvrSpace/Moving'), dataType: 'json' }).then(function (list) {
+        var next = {};
+        (list || []).forEach(function (m) {
+          next[plainId(m.ItemId)] = m;
+          if (m.SeriesId && !next[plainId(m.SeriesId)]) {
+            next[plainId(m.SeriesId)] = m;
+          }
+        });
+        moving = next;
+        renderMoving();
+      });
+    }).catch(function () { log('moving list request failed'); });
+  }
+
+  function renderMoving() {
+    if (!document.getElementById('jdvrspace-work-style')) {
+      var style = document.createElement('style');
+      style.id = 'jdvrspace-work-style';
+      style.textContent = WORK_CSS;
+      document.head.appendChild(style);
+    }
+    var nodes = document.querySelectorAll('.card[data-id], .listItem[data-id]');
+    for (var i = 0; i < nodes.length; i++) {
+      var n = nodes[i];
+      var card = n.classList.contains('card');
+      var host = card ? n.querySelector('.cardScalable') : n.querySelector('.listItemBody > .listItemBodyText');
+      if (!host) {
+        continue;
+      }
+      var el = host.querySelector(card ? ':scope > .jdvr-work-move' : ':scope > .jdvr-work-pill.jdvr-work-move');
+      var m = moving[plainId(n.getAttribute('data-id'))];
+      if (!m) {
+        if (el) {
+          el.remove();
+        }
+        continue;
+      }
+      var pct = m.Bytes > 0 ? Math.min(100, m.CopiedBytes * 100 / m.Bytes) : 0;
+      var text = m.Started ? '⇢ Moving ' + Math.floor(Math.min(99, pct)) + '%' : '⇢ Waiting to move';
+      if (!el) {
+        el = document.createElement(card ? 'div' : 'span');
+        el.className = card ? 'jdvr-work jdvr-work-move' : 'jdvr-work-pill jdvr-work-move';
+        if (card) {
+          el.innerHTML = '<span class="jdvr-work-label"></span><div class="jdvr-work-bar"><i></i></div>';
+        }
+        host.appendChild(el);
+      }
+      if (card) {
+        el.querySelector('.jdvr-work-label').textContent = text;
+        el.querySelector('.jdvr-work-bar i').style.width = pct + '%';
+      } else {
+        el.textContent = text;
+      }
+    }
+  }
+
+  setInterval(function () {
+    refreshMoving();
+    renderMoving();
+  }, 2000);
 
   var observer = new MutationObserver(function (mutations) {
     for (var i = 0; i < mutations.length; i++) {
