@@ -31,7 +31,7 @@ namespace Jellyfin.Plugin.DvrSpace.Space;
 /// commercial markers, watched state and history carry over (Jellyfin re-links user data to
 /// the moved item). Never touches recordings marked Keep, still recording, or being played.
 /// </summary>
-public sealed class SpaceManager : BackgroundService
+public sealed partial class SpaceManager : BackgroundService
 {
     private const long Gb = 1024L * 1024 * 1024;
     private static readonly TimeSpan FsTimeout = TimeSpan.FromSeconds(15);
@@ -262,7 +262,7 @@ public sealed class SpaceManager : BackgroundService
             .Select(i => new Candidate(
                 i,
                 roots.First(r => IsUnder(i.Path!, r)),
-                i is Movie ? "movies" : "tv",
+                KindOf(i, cfg),
                 users.Any(u => _userDataManager.GetUserData(u, i)?.Played == true)))
             .ToList();
 
@@ -270,7 +270,7 @@ public sealed class SpaceManager : BackgroundService
         IEnumerable<Candidate> ordered = (cfg.Order switch
         {
             PluginConfiguration.OrderOldest => candidates.OrderBy(c => c.Item.DateCreated),
-            PluginConfiguration.OrderMoviesFirst => candidates.OrderBy(c => c.Kind == "movies" ? 0 : 1).ThenBy(c => c.Item.DateCreated),
+            PluginConfiguration.OrderMoviesFirst => candidates.OrderBy(c => c.Item is Movie ? 0 : 1).ThenBy(c => c.Item.DateCreated),
             _ => candidates.OrderBy(c => c.Watched ? 0 : 1).ThenBy(c => c.Item.DateCreated)
         }).OrderBy(c => IsLiveBuffer(c.Item) ? 0 : 1);
 
@@ -315,9 +315,10 @@ public sealed class SpaceManager : BackgroundService
                 continue;
             }
 
-            var target = plan.Targets.FirstOrDefault(t =>
-                t.Usable && (t.Kind == "both" || t.Kind == c.Kind)
-                && projected[t.Path] - size >= t.KeepFreeGb * Gb);
+            var target = plan.Targets
+                .Where(t => t.Usable && Accepts(t.Kind, c.Item, c.Kind) && projected[t.Path] - size >= t.KeepFreeGb * Gb)
+                .OrderBy(t => t.Kind == c.Kind ? 0 : 1)
+                .FirstOrDefault();
             if (target is not null)
             {
                 projected[target.Path] -= size;
@@ -373,6 +374,7 @@ public sealed class SpaceManager : BackgroundService
             var free = WithTimeout(() => Directory.Exists(path) ? FreeSpace(path) : null);
             status.Reachable = free.Completed && free.Value is not null;
             status.FreeBytes = free.Value?.Free;
+            status.TotalBytes = free.Value?.Total;
             status.Problem = !status.Reachable ? (free.Completed ? "not found" : "not responding")
                 : !status.InLibrary ? "not inside any library (moved recordings would disappear from Jellyfin)"
                 : ManagedRoots().Any(r => path == r || IsUnder(path, r) || IsUnder(r, path)) ? "overlaps the recordings folders"
@@ -414,7 +416,21 @@ public sealed class SpaceManager : BackgroundService
             {
                 if (item.Action == PlanItem.ActionMove && item.Destination is { } dest)
                 {
-                    MoveRecording(item.Path, item.Root, dest, _libraryMonitor, _logger);
+                    var progress = Track(current, dest);
+                    if (progress is null)
+                    {
+                        continue; // already being moved from the item menu
+                    }
+
+                    progress.Started = true;
+                    try
+                    {
+                        MoveRecording(item.Path, item.Root, dest, _libraryMonitor, _logger);
+                    }
+                    finally
+                    {
+                        _moves.TryRemove(current.Id, out _);
+                    }
                 }
                 else if (item.Action == PlanItem.ActionDelete)
                 {
@@ -561,6 +577,8 @@ public sealed class SpaceManager : BackgroundService
         public bool InLibrary { get; set; }
 
         public long? FreeBytes { get; set; }
+
+        public long? TotalBytes { get; set; }
 
         public string? Problem { get; set; }
 

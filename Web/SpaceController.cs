@@ -63,6 +63,34 @@ public sealed class SpaceController : ControllerBase
     [HttpDelete("Keep/{itemId}")]
     public IActionResult Unkeep([FromRoute] Guid itemId) => SetKeep(itemId, false);
 
+    /// <summary>Recordings being moved to the archive right now, with progress.</summary>
+    [HttpGet("Moving")]
+    public IActionResult Moving() => Ok(_manager.Moving());
+
+    /// <summary>For the item menu's "Move to archive…": is it a recording, and where can it go.</summary>
+    [HttpGet("Archive/{itemId}")]
+    public IActionResult ArchiveChoices([FromRoute] Guid itemId) =>
+        _libraryManager.GetItemById(itemId) is { } item ? Ok(_manager.GetArchiveChoices(item)) : NotFound();
+
+    /// <summary>Moves one recording to the archive location <paramref name="target"/> (in the background).</summary>
+    [HttpPost("Archive/{itemId}")]
+    public IActionResult Archive([FromRoute] Guid itemId, [FromQuery] string target)
+    {
+        if (_libraryManager.GetItemById(itemId) is not { } item)
+        {
+            return NotFound(new { Message = "No such item." });
+        }
+
+        try
+        {
+            return Ok(new { Message = _manager.StartArchive(item, target ?? string.Empty) });
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { ex.Message });
+        }
+    }
+
     private IActionResult SetKeep(Guid itemId, bool keep)
     {
         if (Plugin.Instance is not { } plugin)

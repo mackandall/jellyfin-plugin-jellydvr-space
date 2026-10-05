@@ -100,6 +100,13 @@
                     <button is="emby-button" type="button" id="DsAddTarget" class="emby-button">
                         <span>+ Add location</span>
                     </button>
+                    <div class="inputContainer" style="margin-top:1.2em;">
+                        <input is="emby-input" type="text" id="DsSportsCategories" label="Guide categories that make a recording sports" />
+                        <div class="fieldDescription">
+                            Separated by commas. Sports recordings go to "Sports" locations first, then to TV or Movies ones.
+                            The item menu's "Move to archive…" offers the locations for the recording's kind.
+                        </div>
+                    </div>
                 </div>
 
                 <div class="verticalSection">
@@ -180,8 +187,8 @@
                         '<span style="width:1.5em;opacity:.7;">' + (i + 1) + '.</span>' +
                         '<input is="emby-input" type="text" data-f="Path" style="flex:1;min-width:16em;" placeholder="/mnt/nas/TV" value="' + esc(t.Path) + '">' +
                         '<select is="emby-select" data-f="Kind" class="emby-select-withcolor emby-select" style="width:8em;">' +
-                        ['tv', 'movies', 'both'].map(function (k) {
-                            return '<option value="' + k + '"' + (t.Kind === k ? ' selected' : '') + '>' + { tv: 'TV', movies: 'Movies', both: 'Both' }[k] + '</option>';
+                        ['tv', 'movies', 'sports', 'both'].map(function (k) {
+                            return '<option value="' + k + '"' + (t.Kind === k ? ' selected' : '') + '>' + { tv: 'TV', movies: 'Movies', sports: 'Sports', both: 'Both' }[k] + '</option>';
                         }).join('') + '</select>' +
                         '<label style="opacity:.8;">keep free</label>' +
                         '<input is="emby-input" type="number" min="0" data-f="KeepFreeGb" style="width:6em;" value="' + esc(t.KeepFreeGb) + '"><span>GB</span>' +
@@ -368,6 +375,7 @@
                     page.querySelector("#DsWhenFull").value = config.WhenArchiveFull || "stop";
                     targets = (config.ArchiveTargets || []).map(function (t) { return { Path: t.Path, Kind: (t.Kind || "both").toLowerCase(), KeepFreeGb: t.KeepFreeGb }; });
                     renderTargets();
+                    page.querySelector("#DsSportsCategories").value = config.SportsCategories || "";
                     page.querySelector("#DsSortMode").value = config.SortMode || "preview";
                     rules = (config.CategoryRules || []).map(function (r) {
                         return { Name: r.Name, Enabled: r.Enabled !== false, Categories: r.Categories, RequireAll: !!r.RequireAll, Destination: r.Destination };
@@ -401,6 +409,7 @@
                     config.Order = page.querySelector("#DsOrder").value;
                     config.WhenArchiveFull = page.querySelector("#DsWhenFull").value;
                     config.ArchiveTargets = targets.filter(function (t) { return t.Path; });
+                    config.SportsCategories = page.querySelector("#DsSportsCategories").value;
                     config.SortMode = page.querySelector("#DsSortMode").value;
                     config.CategoryRules = rules.filter(function (r) { return r.Name || r.Categories; });
                     ApiClient.updatePluginConfiguration(pluginUniqueId, config).then(function (result) {

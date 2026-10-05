@@ -222,7 +222,7 @@ public sealed class CategorySorter
     /// the guide .nfo Jellyfin's DVR writes beside it (kept even if metadata fetching later
     /// replaces the item's genres).
     /// </summary>
-    private static List<string> Categories(BaseItem item)
+    internal static List<string> Categories(BaseItem item)
     {
         var set = new List<string>(item.Genres ?? Array.Empty<string>());
         var nfo = Path.ChangeExtension(item.Path!, ".nfo");

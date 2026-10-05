@@ -10,7 +10,8 @@ public class ArchiveTarget
     /// recordings would vanish from Jellyfin. Recordings keep their show/season layout below it.</summary>
     public string Path { get; set; } = string.Empty;
 
-    /// <summary>What it takes: "tv", "movies" or "both".</summary>
+    /// <summary>What it takes: "tv", "movies", "sports" or "both". A sports recording can also go
+    /// to a "tv" or "movies" location (whichever it is), but "sports" ones are offered first.</summary>
     public string Kind { get; set; } = "both";
 
     /// <summary>Never fill this location past this much free space (GB).</summary>
@@ -78,6 +79,9 @@ public class PluginConfiguration : BasePluginConfiguration
 
     /// <summary>Which recordings go first.</summary>
     public string Order { get; set; } = OrderWatchedThenOldest;
+
+    /// <summary>Guide categories that make a recording "sports" for archiving, separated by commas.</summary>
+    public string SportsCategories { get; set; } = "Sports, Sports event, Sporting event, Sports non-event, Sports talk";
 
     /// <summary>Recordings marked Keep (library item ids): never moved or deleted.</summary>
     public string[] KeepItemIds { get; set; } = Array.Empty<string>();
