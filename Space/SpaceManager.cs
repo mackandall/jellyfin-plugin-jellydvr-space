@@ -208,11 +208,28 @@ public sealed partial class SpaceManager : BackgroundService
 
     // ---- planning --------------------------------------------------------------------------
 
-    /// <summary>The DVR's recording folders (Live TV settings): the only places this manages.</summary>
+    /// <summary>
+    /// Where Jellyfin records when Live TV's recording path is left empty (as on a new server):
+    /// its data folder's livetv/recordings.
+    /// </summary>
+    internal static string DefaultRecordingPath(IConfigurationManager config) =>
+        System.IO.Path.Combine(config.CommonApplicationPaths.DataPath, "livetv", "recordings");
+
+    /// <summary>
+    /// Live TV's general recording folder: the one set in its settings, or Jellyfin's default
+    /// when none is set.
+    /// </summary>
+    internal static string RecordingPath(IConfigurationManager config)
+    {
+        var p = config.GetConfiguration<LiveTvOptions>("livetv").RecordingPath;
+        return string.IsNullOrWhiteSpace(p) ? DefaultRecordingPath(config) : p;
+    }
+
+    /// <summary>The DVR's recording folders (Live TV settings, or Jellyfin's default): the only places this manages.</summary>
     public IReadOnlyList<string> ManagedRoots()
     {
         var tv = _config.GetConfiguration<LiveTvOptions>("livetv");
-        return new[] { tv.RecordingPath, tv.MovieRecordingPath, tv.SeriesRecordingPath }
+        return new[] { RecordingPath(_config), tv.MovieRecordingPath, tv.SeriesRecordingPath }
             .Where(p => !string.IsNullOrWhiteSpace(p))
             .Select(p => p!.TrimEnd('/'))
             .Distinct(StringComparer.Ordinal)

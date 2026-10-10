@@ -64,7 +64,7 @@ public sealed class CategorySorter
         }
 
         var tv = _config.GetConfiguration<LiveTvOptions>("livetv");
-        var source = Clean(tv.RecordingPath);
+        var source = Clean(SpaceManager.RecordingPath(_config));
         if (source is null)
         {
             plan.Warning = "No recording path is set in Live TV settings.";
