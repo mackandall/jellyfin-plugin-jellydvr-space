@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
+using Jellyfin.Data.Enums;
 using Jellyfin.Plugin.DvrSpace.Configuration;
 using MediaBrowser.Controller.Entities;
 using MediaBrowser.Controller.Entities.Movies;
@@ -75,9 +76,130 @@ public sealed partial class SpaceManager
     internal static bool Accepts(string targetKind, BaseItem item, string kind) =>
         targetKind == "both" || targetKind == kind || (kind == "sports" && targetKind == (item is Movie ? "movies" : "tv"));
 
+    /// <summary>
+    /// A show, season or other folder's recordings still in the DVR's recording folders (the
+    /// ones "Move to archive…" on the folder would move).
+    /// </summary>
+    private List<BaseItem> RecordingsUnder(Folder folder)
+    {
+        var roots = ManagedRoots();
+        return _libraryManager.GetItemList(new InternalItemsQuery
+            {
+                AncestorIds = new[] { folder.Id },
+                IncludeItemTypes = new[] { BaseItemKind.Episode, BaseItemKind.Movie, BaseItemKind.Video },
+                IsVirtualItem = false,
+                Recursive = true
+            })
+            .Where(i => i is Video && i.Path is { } p && roots.Any(r => IsUnder(p, r)) && File.Exists(p))
+            .OrderBy(i => i.ParentIndexNumber ?? 0).ThenBy(i => i.IndexNumber ?? 0).ThenBy(i => i.Path, StringComparer.Ordinal)
+            .ToList();
+    }
+
+    /// <summary>
+    /// For a show (or season): all its recordings in the recording folders together, and the
+    /// archive locations that take them all (space checked for the total). Its destination is
+    /// the show's folder in each location.
+    /// </summary>
+    private ArchiveChoices GetFolderArchiveChoices(Folder folder)
+    {
+        var cfg = Config;
+        var items = RecordingsUnder(folder);
+        var choices = new ArchiveChoices { Name = folder.Name, IsRecording = items.Count > 0, Count = items.Count };
+        if (items.Count == 0)
+        {
+            return choices;
+        }
+
+        var kinds = items.Select(i => KindOf(i, cfg)).Distinct().ToList();
+        choices.Kind = kinds.Count == 1 ? kinds[0] : "tv";
+        choices.Bytes = items.Sum(i => RecordingFiles(i.Path!).Sum(f => SafeLength(f)));
+        var moving = items.Count(i => _moves.ContainsKey(i.Id));
+        if (moving > 0)
+        {
+            choices.InFlight = $"{moving} of {items.Count} being moved";
+        }
+
+        var busy = items.Select(WhyNot).Count(w => w is not null);
+        choices.Note = busy > 0 ? $"{busy} of them can't move right now (recording or playing) and will be left where they are." : null;
+        var first = items[0];
+        var root = ManagedRoots().First(r => IsUnder(first.Path!, r));
+        foreach (var t in CheckTargets(cfg)
+                     .Where(t => items.All(i => Accepts(t.Kind, i, KindOf(i, cfg))))
+                     .OrderBy(t => t.Kind == choices.Kind ? 0 : t.Kind == "both" ? 2 : 1))
+        {
+            var after = (t.FreeBytes ?? 0) - choices.Bytes;
+            // The show's folder: the episode's folder, or its parent when episodes sit in season folders.
+            var rel = Path.GetRelativePath(root, Path.GetDirectoryName(first.Path!)!);
+            if (first.ParentIndexNumber is not null && Path.GetFileName(rel).StartsWith("Season", StringComparison.OrdinalIgnoreCase))
+            {
+                rel = Path.GetDirectoryName(rel) ?? rel;
+            }
+
+            choices.Targets.Add(new ArchiveChoice
+            {
+                Path = t.Path,
+                Kind = t.Kind,
+                FreeBytes = t.FreeBytes,
+                TotalBytes = t.TotalBytes,
+                KeepFreeGb = t.KeepFreeGb,
+                Destination = Path.Combine(t.Path, rel),
+                Problem = t.Problem ?? (after < 0 ? "not enough free space" : null),
+                Note = t.Problem is null && after >= 0 && after < t.KeepFreeGb * Gb
+                    ? $"leaves it below its {t.KeepFreeGb} GB floor"
+                    : null
+            });
+        }
+
+        return choices;
+    }
+
+    /// <summary>
+    /// Queues every recording of a show (or season) for the archive location; they move one after
+    /// another. Ones that can't move now (recording, playing, already moving) are left and counted.
+    /// </summary>
+    private string StartFolderArchive(Folder folder, string targetPath)
+    {
+        var choices = GetFolderArchiveChoices(folder);
+        if (!choices.IsRecording)
+        {
+            throw new InvalidOperationException("This show has no recordings in the DVR's recording folders.");
+        }
+
+        var choice = choices.Targets.FirstOrDefault(t => t.Path == targetPath.TrimEnd('/'))
+            ?? throw new InvalidOperationException("That archive location doesn't take these recordings.");
+        if (choice.Problem is { } problem)
+        {
+            throw new InvalidOperationException($"{choice.Path}: {problem}.");
+        }
+
+        int queued = 0, skipped = 0;
+        foreach (var item in RecordingsUnder(folder))
+        {
+            try
+            {
+                StartArchive(item, targetPath);
+                queued++;
+            }
+            catch (InvalidOperationException ex)
+            {
+                skipped++;
+                _logger.LogInformation("Not archiving {Name} with its show: {Why}", item.Name, ex.Message);
+            }
+        }
+
+        return $"Moving {queued} recording{(queued == 1 ? string.Empty : "s")} of \"{folder.Name}\" ({choices.Bytes / (double)Gb:F1} GB) to {choice.Destination}, one after another." +
+            (skipped > 0 ? $" {skipped} left where {(skipped == 1 ? "it is" : "they are")} (recording, playing or already moving)." : string.Empty);
+    }
+
     /// <summary>What the item menu shows: whether the item is a recording, and where it can go.</summary>
     public ArchiveChoices GetArchiveChoices(BaseItem item)
     {
+        // A show or season only (never a whole library or collection).
+        if (item is Series or Season)
+        {
+            return GetFolderArchiveChoices((Folder)item);
+        }
+
         var cfg = Config;
         var root = item.Path is { } p ? ManagedRoots().FirstOrDefault(r => IsUnder(p, r)) : null;
         var choices = new ArchiveChoices { Name = item.Name, IsRecording = root is not null };
@@ -122,6 +244,11 @@ public sealed partial class SpaceManager
     /// <summary>Starts moving the recording to <paramref name="targetPath"/>; returns what's happening.</summary>
     public string StartArchive(BaseItem item, string targetPath)
     {
+        if (item is Series or Season)
+        {
+            return StartFolderArchive((Folder)item, targetPath);
+        }
+
         var choices = GetArchiveChoices(item);
         if (!choices.IsRecording)
         {
@@ -210,6 +337,12 @@ public sealed partial class SpaceManager
         public string Kind { get; set; } = string.Empty;
 
         public long Bytes { get; set; }
+
+        /// <summary>How many recordings (a show's or season's; 1 for a single recording).</summary>
+        public int Count { get; set; } = 1;
+
+        /// <summary>Something to know before moving (a show's: some of its recordings can't move now).</summary>
+        public string? Note { get; set; }
 
         /// <summary>Why it can't be moved right now (e.g. "still recording"), or null.</summary>
         public string? Blocked { get; set; }

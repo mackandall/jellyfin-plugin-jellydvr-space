@@ -117,7 +117,7 @@
 
   // A bar for one destination: what's used, what this recording would take, and what stays
   // free; the tick is the location's own free-space floor.
-  function spaceBar(t, bytes) {
+  function spaceBar(t, bytes, what) {
     var total = t.TotalBytes;
     var used = Math.max(0, total - t.FreeBytes);
     var fits = t.FreeBytes >= bytes;
@@ -129,7 +129,7 @@
     bar.appendChild(el('div', 'height:100%;width:' + pct(used) + '%;background:#64748b;'));
     var mine = el('div', 'height:100%;min-width:' + (add > 0 ? '3px' : '0') + ';width:' + pct(add) + '%;background:'
       + (!fits ? '#dc2626' : belowFloor ? '#f59e0b' : '#00a4dc') + ';');
-    mine.title = 'This recording: ' + gb(bytes);
+    mine.title = what + ': ' + gb(bytes);
     bar.appendChild(mine);
     if (t.KeepFreeGb > 0) {
       var tick = el('div', 'position:absolute;top:0;bottom:0;width:2px;background:#fff;opacity:.7;left:'
@@ -165,13 +165,19 @@
     });
     document.addEventListener('keydown', onKey, true);
 
-    box.appendChild(el('h2', 'margin:0 0 .3em;font-size:1.3em;font-weight:500;', 'Move to archive'));
+    // A show or season: all its recordings go, one after another, into the show's folder.
+    var many = choices.Count > 1;
+    var what = many ? 'These ' + choices.Count + ' recordings' : 'This recording';
+    box.appendChild(el('h2', 'margin:0 0 .3em;font-size:1.3em;font-weight:500;', many ? 'Move all to archive' : 'Move to archive'));
     box.appendChild(el('div', 'opacity:.8;margin-bottom:1em;',
-      choices.Name + ' \u00b7 ' + (KIND_LABELS[choices.Kind] || choices.Kind) + ' \u00b7 ' + gb(choices.Bytes)));
+      choices.Name + (many ? ' \u00b7 ' + choices.Count + ' recordings' : '') + ' \u00b7 ' + (KIND_LABELS[choices.Kind] || choices.Kind) + ' \u00b7 ' + gb(choices.Bytes)));
+    if (choices.Note) {
+      box.appendChild(el('div', 'color:#f59e0b;margin:-.4em 0 1em;', choices.Note));
+    }
 
     if (choices.Targets.some(function (t) { return t.TotalBytes; })) {
       var legend = el('div', 'font-size:85%;opacity:.75;margin:-.4em 0 1em;display:flex;gap:1em;flex-wrap:wrap;align-items:center;');
-      [['#64748b', 'used'], ['#00a4dc', 'this recording'], ['rgba(255,255,255,.12)', 'free']].forEach(function (k) {
+      [['#64748b', 'used'], ['#00a4dc', what.toLowerCase()], ['rgba(255,255,255,.12)', 'free']].forEach(function (k) {
         var item = el('span', 'display:inline-flex;align-items:center;gap:.35em;');
         item.appendChild(el('span', 'display:inline-block;width:.8em;height:.8em;border-radius:2px;background:' + k[0] + ';'));
         item.appendChild(document.createTextNode(k[1]));
@@ -207,7 +213,7 @@
             + (t.FreeBytes >= choices.Bytes ? ' \u00b7 ' + gb(t.FreeBytes - choices.Bytes) + ' after' : '')
           : '')));
       if (t.FreeBytes != null && t.TotalBytes) {
-        row.appendChild(spaceBar(t, choices.Bytes));
+        row.appendChild(spaceBar(t, choices.Bytes, what));
       }
       if (t.Problem) {
         row.appendChild(el('div', 'color:#f87171;font-size:90%;margin-top:.15em;', t.Problem));
@@ -286,13 +292,16 @@
       }
 
       var button;
-      if (choices.InFlight) {
+      if (choices.InFlight && choices.Count > 1) {
+        button = buildMenuItem('jdvrspace-moving', 'hourglass_top', 'Moving to archive\u2026 (' + choices.InFlight + ')', function () {});
+        button.disabled = true;
+      } else if (choices.InFlight) {
         var p = choices.Progress;
         var pct = p && p.Bytes > 0 ? Math.min(99, Math.floor(p.CopiedBytes * 100 / p.Bytes)) : 0;
         button = buildMenuItem('jdvrspace-moving', 'hourglass_top', p && !p.Started ? 'Waiting to move to the archive\u2026' : 'Moving to archive\u2026 ' + pct + '%', function () {});
         button.disabled = true;
       } else {
-        button = buildMenuItem('jdvrspace-archive', 'drive_file_move', 'Move to archive\u2026', function () {
+        button = buildMenuItem('jdvrspace-archive', 'drive_file_move', choices.Count > 1 ? 'Move all ' + choices.Count + ' recordings to archive\u2026' : 'Move to archive\u2026', function () {
           // Let the sheet close first, then ask again: the free space may have changed.
           setTimeout(function () {
             getChoices(itemId).then(function (fresh) {
