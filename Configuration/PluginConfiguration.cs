@@ -39,6 +39,37 @@ public class CategoryRule
     public string Destination { get; set; } = string.Empty;
 }
 
+/// <summary>
+/// What one JDVR client (a TV) may do. These only narrow what its signed-in user may do in
+/// Jellyfin; they never add to it.
+/// </summary>
+public class DeviceRights
+{
+    /// <summary>Jellyfin's device id of the client; empty in <see cref="PluginConfiguration.NewDeviceRights"/>.</summary>
+    public string DeviceId { get; set; } = string.Empty;
+
+    /// <summary>The device's name when it was saved, for the settings page.</summary>
+    public string Name { get; set; } = string.Empty;
+
+    /// <summary>Watch live TV.</summary>
+    public bool LiveTv { get; set; } = true;
+
+    /// <summary>Record and schedule: timers, series recordings, Recording Favourites.</summary>
+    public bool Record { get; set; } = true;
+
+    /// <summary>Delete recordings in the DVR's recordings folders.</summary>
+    public bool Delete { get; set; } = true;
+
+    /// <summary>Delete from the libraries outside the recordings folders (the archive).</summary>
+    public bool DeleteArchive { get; set; }
+
+    /// <summary>Move recordings to the archive.</summary>
+    public bool Archive { get; set; } = true;
+
+    /// <summary>Edit recordings: commercial scan, program start, audio format.</summary>
+    public bool Edit { get; set; } = true;
+}
+
 public class PluginConfiguration : BasePluginConfiguration
 {
     public const string SortOff = "off";
@@ -95,4 +126,10 @@ public class PluginConfiguration : BasePluginConfiguration
         new() { Name = "Comedy specials", Categories = "Special, Comedy", RequireAll = true },
         new() { Name = "Sports", Enabled = false, Categories = "Sports, Sports event, Sporting event" }
     };
+
+    /// <summary>Rights of the JDVR clients set on the settings page, one per device.</summary>
+    public DeviceRights[] DeviceRights { get; set; } = Array.Empty<DeviceRights>();
+
+    /// <summary>Rights of a JDVR client that isn't in <see cref="DeviceRights"/> (one not saved yet).</summary>
+    public DeviceRights NewDeviceRights { get; set; } = new();
 }

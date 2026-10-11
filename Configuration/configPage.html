@@ -144,6 +144,23 @@
                     <div id="DsSortNote" class="fieldDescription" style="margin-top:.6em;white-space:pre-line;"></div>
                 </div>
 
+                <div class="verticalSection">
+                    <h2>JDVR devices</h2>
+                    <div class="fieldDescription" style="margin-bottom:.8em;">
+                        What each TV running JDVR may do. These only narrow what its signed-in user may do in Jellyfin
+                        (Dashboard › Users); they never add to it. JDVR hides what a TV may not do, and the server refuses it.
+                        Other apps aren't affected. A TV picks up a change within a few minutes.
+                    </div>
+                    <table style="width:100%;border-collapse:collapse;font-size:.9em;">
+                        <thead><tr style="text-align:left;opacity:.7;">
+                            <th style="padding:.3em;">Device</th><th>Live TV</th><th>Record</th><th>Delete recordings</th>
+                            <th>Delete from archive</th><th>Move to archive</th><th>Edit</th>
+                        </tr></thead>
+                        <tbody id="DsDevices"></tbody>
+                    </table>
+                    <div id="DsDevicesNote" class="fieldDescription" style="margin-top:.6em;"></div>
+                </div>
+
                 <div>
                     <button is="emby-button" type="submit" class="raised button-submit block emby-button">
                         <span>Save</span>
@@ -351,6 +368,41 @@
                 });
             }
 
+            var RIGHTS = ["LiveTv", "Record", "Delete", "DeleteArchive", "Archive", "Edit"];
+            var devices = [];
+            var newDevices = {};
+
+            function rightsRow(d, label, sub) {
+                var tr = document.createElement("tr");
+                tr.style.borderTop = "1px solid rgba(128,128,128,.2)";
+                tr.innerHTML = '<td style="padding:.4em .3em;">' + esc(label) + (sub ? '<div style="opacity:.6;font-size:.9em;">' + esc(sub) + '</div>' : '') + '</td>' +
+                    RIGHTS.map(function (r) { return '<td><input type="checkbox" data-r="' + r + '"' + (d[r] ? ' checked' : '') + '></td>'; }).join('');
+                tr.querySelectorAll("[data-r]").forEach(function (el) {
+                    el.addEventListener("change", function () { d[el.getAttribute("data-r")] = el.checked; });
+                });
+                return tr;
+            }
+
+            function renderDevices() {
+                var body = page.querySelector("#DsDevices");
+                body.innerHTML = "";
+                devices.forEach(function (d) {
+                    var sub = [d.App, (d.Users || []).join(", "), d.LastActivity ? "last used " + new Date(d.LastActivity).toLocaleString() : "",
+                        d.Saved ? "" : "new: not saved yet"].filter(function (x) { return x; }).join(" · ");
+                    body.appendChild(rightsRow(d, d.Name || d.DeviceId, sub));
+                });
+                body.appendChild(rightsRow(newDevices, "New devices", "what a TV gets the first time it signs in, until it is saved here"));
+                page.querySelector("#DsDevicesNote").textContent = devices.length ? "" : "No TV running JDVR has signed in yet.";
+            }
+
+            function loadDevices() {
+                return api("GET", "JellyDvrSpace/Devices").then(function (r) {
+                    devices = r.Devices || [];
+                    newDevices = r.NewDevices || {};
+                    renderDevices();
+                });
+            }
+
             function load() {
                 return api("GET", "JellyDvrSpace/Status").then(renderStatus);
             }
@@ -384,6 +436,7 @@
                     Dashboard.hideLoadingMsg();
                 });
                 load();
+                loadDevices();
             });
 
             page.querySelector("#DsAddTarget").addEventListener("click", function () {
@@ -412,9 +465,22 @@
                     config.SportsCategories = page.querySelector("#DsSportsCategories").value;
                     config.SortMode = page.querySelector("#DsSortMode").value;
                     config.CategoryRules = rules.filter(function (r) { return r.Name || r.Categories; });
+                    function rightsOf(d) {
+                        var o = {};
+                        RIGHTS.forEach(function (r) { o[r] = !!d[r]; });
+                        return o;
+                    }
+                    config.DeviceRights = devices.map(function (d) {
+                        var o = rightsOf(d);
+                        o.DeviceId = d.DeviceId;
+                        o.Name = d.Name || "";
+                        return o;
+                    });
+                    config.NewDeviceRights = rightsOf(newDevices);
                     ApiClient.updatePluginConfiguration(pluginUniqueId, config).then(function (result) {
                         Dashboard.processPluginConfigurationUpdateResult(result);
                         run();
+                        loadDevices();
                     });
                 });
                 return false;
