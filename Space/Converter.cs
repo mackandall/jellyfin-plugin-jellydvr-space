@@ -824,6 +824,14 @@ public sealed class Converter : BackgroundService
             throw;
         }
 
+        if (p.ExitCode == 255)
+        {
+            // Stopping Jellyfin signals every process in its group, so ffmpeg can quit a moment before
+            // we hear about the shutdown. Give it a few seconds: if Jellyfin is stopping, this throws
+            // and the movie goes back in the queue instead of being marked failed.
+            await Task.Delay(TimeSpan.FromSeconds(5), ct).ConfigureAwait(false);
+        }
+
         if (p.ExitCode != 0 || !File.Exists(output))
         {
             var tail = string.Join('\n', errors.TakeLast(8));
