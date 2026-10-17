@@ -372,15 +372,26 @@ public sealed class Converter : BackgroundService
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        // A movie left "running" by a restart: its hidden copy is removed when it's next picked.
+        // A movie left "running" by a restart goes back in the queue, and its half-written hidden
+        // copy is removed now (it would stay if the movie were then taken off the queue).
+        List<Guid> interrupted;
         lock (_lock)
         {
-            foreach (var e in _entries.Values.Where(e => e.Status == ConvertEntry.Running))
+            interrupted = _entries.Where(kv => kv.Value.Status == ConvertEntry.Running).Select(kv => kv.Key).ToList();
+            foreach (var id in interrupted)
             {
-                e.Status = ConvertEntry.Queued;
+                _entries[id].Status = ConvertEntry.Queued;
             }
 
             Save();
+        }
+
+        foreach (var id in interrupted)
+        {
+            if (_library.GetItemById(id) is { Path: { } p })
+            {
+                TryDelete(System.IO.Path.Combine(System.IO.Path.GetDirectoryName(p)!, "." + System.IO.Path.GetFileNameWithoutExtension(p) + WorkSuffix + System.IO.Path.GetExtension(p)));
+            }
         }
 
         try
