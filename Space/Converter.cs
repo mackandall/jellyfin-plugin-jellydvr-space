@@ -223,17 +223,13 @@ public sealed class Converter : BackgroundService
         }
     }
 
-    // "USBShareD", ".187 archive": the share or drive the file is on.
+    // "USBShareD", "NetworkUSB_storage": the share or drive the file is on (its mount name).
     private static string Where(string path)
     {
         var parts = path.Split('/', StringSplitOptions.RemoveEmptyEntries);
         if (parts.Length >= 2 && parts[0] == "mnt")
         {
-            return parts[1] switch
-            {
-                "NetworkUSB_storage" => ".187 archive",
-                _ => parts[1]
-            };
+            return parts[1];
         }
 
         return parts.FirstOrDefault() ?? path;
