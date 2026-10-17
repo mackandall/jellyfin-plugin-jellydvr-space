@@ -61,6 +61,12 @@
                         <div class="fieldDescription">It also checks two minutes after each recording finishes.</div>
                     </div>
 
+                    <div class="inputContainer">
+                        <label class="inputLabel inputLabelUnfocused" for="DsTranscodeSweep">Delete leftover playback copies after (hours)</label>
+                        <input id="DsTranscodeSweep" type="number" min="0" max="168" is="emby-input" />
+                        <div class="fieldDescription">Copies Jellyfin makes in its transcode folder for playback, when no one is playing them and nothing has written them for this long. A player that closes without saying so leaves a whole movie there, on the server's system drive. 0 leaves them to Jellyfin's daily clean-up.</div>
+                    </div>
+
                     <div class="selectContainer">
                         <label class="selectLabel" for="DsAction">To make room</label>
                         <select is="emby-select" id="DsAction" class="emby-select-withcolor emby-select">
@@ -422,6 +428,7 @@
                     page.querySelector("#DsMode").value = config.Mode || "preview";
                     page.querySelector("#DsKeepFree").value = config.KeepFreeGb || 100;
                     page.querySelector("#DsInterval").value = config.CheckIntervalMinutes || 15;
+                    page.querySelector("#DsTranscodeSweep").value = config.TranscodeSweepHours == null ? 6 : config.TranscodeSweepHours;
                     page.querySelector("#DsAction").value = config.Action || "move";
                     page.querySelector("#DsOrder").value = config.Order || "watched-then-oldest";
                     page.querySelector("#DsWhenFull").value = config.WhenArchiveFull || "stop";
@@ -458,6 +465,8 @@
                     config.Mode = page.querySelector("#DsMode").value;
                     config.KeepFreeGb = parseInt(page.querySelector("#DsKeepFree").value, 10) || 100;
                     config.CheckIntervalMinutes = parseInt(page.querySelector("#DsInterval").value, 10) || 15;
+                    var sweep = parseInt(page.querySelector("#DsTranscodeSweep").value, 10);
+                    config.TranscodeSweepHours = isNaN(sweep) ? 6 : Math.max(0, sweep);
                     config.Action = page.querySelector("#DsAction").value;
                     config.Order = page.querySelector("#DsOrder").value;
                     config.WhenArchiveFull = page.querySelector("#DsWhenFull").value;

@@ -99,6 +99,12 @@ public class PluginConfiguration : BasePluginConfiguration
     /// <summary>How often to check (minutes); it also checks right after a recording finishes.</summary>
     public int CheckIntervalMinutes { get; set; } = 15;
 
+    /// <summary>
+    /// Delete playback copies left in Jellyfin's transcode folder once nothing has written them
+    /// for this many hours and no playback is using them (hours; 0 leaves them to Jellyfin).
+    /// </summary>
+    public int TranscodeSweepHours { get; set; } = 6;
+
     /// <summary>What happens to the recordings chosen to make room.</summary>
     public string Action { get; set; } = ActionMove;
 
