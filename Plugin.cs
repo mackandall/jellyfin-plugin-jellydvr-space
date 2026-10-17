@@ -45,5 +45,14 @@ public class Plugin : BasePlugin<PluginConfiguration>, IHasWebPages
                 "{0}.Configuration.configPage.html",
                 GetType().Namespace)
         };
+        yield return new PluginPageInfo
+        {
+            Name = "JellyDvrConvert",
+            DisplayName = "Convert to HEVC",
+            EmbeddedResourcePath = string.Format(
+                CultureInfo.InvariantCulture,
+                "{0}.Configuration.convertPage.html",
+                GetType().Namespace)
+        };
     }
 }

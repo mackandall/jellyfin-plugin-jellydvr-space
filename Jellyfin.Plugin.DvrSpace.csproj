@@ -27,6 +27,7 @@
 
   <ItemGroup>
     <EmbeddedResource Include="Configuration\configPage.html" />
+    <EmbeddedResource Include="Configuration\convertPage.html" />
     <EmbeddedResource Include="Web\archive.js" />
   </ItemGroup>
 

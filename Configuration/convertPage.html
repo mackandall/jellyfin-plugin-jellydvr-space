@@ -1,0 +1,272 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <title>Convert to HEVC</title>
+</head>
+<body>
+<div id="DvrConvertPage"
+     data-role="page"
+     class="page type-interior pluginConfigurationPage"
+     data-require="emby-input,emby-button,emby-checkbox,emby-select">
+    <style>
+        #DvrConvertPage .cv-sum{display:grid;grid-template-columns:repeat(auto-fit,minmax(11em,1fr));gap:1px;background:rgba(128,128,128,.25);border-radius:8px;overflow:hidden;margin:.8em 0}
+        #DvrConvertPage .cv-sum>div{background:rgba(128,128,128,.08);padding:.7em .9em}
+        #DvrConvertPage .cv-sum b{display:block;font-size:1.5em;font-variant-numeric:tabular-nums}
+        #DvrConvertPage .cv-sum span{opacity:.7;font-size:.85em}
+        #DvrConvertPage .cv-bar{height:6px;background:rgba(128,128,128,.25);border-radius:3px;overflow:hidden;margin-top:.4em}
+        #DvrConvertPage .cv-bar i{display:block;height:100%;background:#22a35a}
+        #DvrConvertPage .cv-now{border:1px solid rgba(128,128,128,.3);border-radius:8px;padding:.8em 1em;margin:.8em 0}
+        #DvrConvertPage .cv-prog{height:10px;background:rgba(128,128,128,.25);border-radius:5px;overflow:hidden;margin:.5em 0}
+        #DvrConvertPage .cv-prog i{display:block;height:100%;background:#8b6fe8;width:0}
+        #DvrConvertPage .cv-tabs{display:flex;flex-wrap:wrap;gap:.3em;margin:.8em 0}
+        #DvrConvertPage .cv-tab{border:1px solid rgba(128,128,128,.4);background:transparent;color:inherit;border-radius:999px;padding:.35em .9em;cursor:pointer;font:inherit}
+        #DvrConvertPage .cv-tab[aria-pressed=true]{background:#00a4dc;border-color:#00a4dc;color:#fff}
+        #DvrConvertPage .cv-wrap{overflow-x:auto;border:1px solid rgba(128,128,128,.3);border-radius:8px}
+        #DvrConvertPage table{width:100%;border-collapse:collapse;min-width:58em}
+        #DvrConvertPage th,#DvrConvertPage td{padding:.5em .6em;text-align:left;border-bottom:1px solid rgba(128,128,128,.2);vertical-align:middle}
+        #DvrConvertPage th{font-size:.75em;letter-spacing:.06em;text-transform:uppercase;opacity:.75;cursor:pointer;white-space:nowrap}
+        #DvrConvertPage td.n,#DvrConvertPage th.n{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+        #DvrConvertPage td small{display:block;opacity:.65;font-size:.8em}
+        #DvrConvertPage .ok{color:#3cbf72} #DvrConvertPage .warn{color:#e5a33a} #DvrConvertPage .bad{color:#ef6a5f} #DvrConvertPage .run{color:#a58cf5}
+        #DvrConvertPage .pill{display:inline-block;border:1px solid currentColor;border-radius:999px;padding:.1em .6em;font-size:.85em;white-space:nowrap}
+        #DvrConvertPage .cv-act button{font:inherit;font-size:.85em;padding:.25em .7em;margin:.1em;border-radius:5px;border:1px solid rgba(128,128,128,.45);background:transparent;color:inherit;cursor:pointer}
+        #DvrConvertPage .cv-act button.primary{background:#00a4dc;border-color:#00a4dc;color:#fff}
+        #DvrConvertPage .cv-set{display:flex;flex-wrap:wrap;gap:.6em 1.6em;align-items:center}
+        #DvrConvertPage .cv-set label{display:flex;gap:.5em;align-items:center}
+        #DvrConvertPage .cv-set input[type=number]{width:4.5em}
+    </style>
+    <div data-role="content">
+        <div class="content-primary">
+            <h2>Convert to HEVC</h2>
+            <div class="fieldDescription">Movies captured as heavy H.264 (1080p, before the Arc card) are re-encoded on the Arc as HEVC, one at a time. Each one is first checked for gaps: a recording that lost signal is better re-recorded than converted. The new copy is written beside the movie, checked (same length, same audio tracks), and takes the movie's place under its own name; the original is kept hidden for Undo.</div>
+
+            <div class="cv-sum" id="CvSum"></div>
+
+            <div class="cv-now" id="CvNow" hidden>
+                <div><span class="pill run">● <span id="CvPhase">Converting</span></span> <b id="CvTitle"></b></div>
+                <div class="cv-prog"><i id="CvBar"></i></div>
+                <div style="display:flex;flex-wrap:wrap;gap:.5em;align-items:center;justify-content:space-between">
+                    <span id="CvMeta" class="fieldDescription"></span>
+                    <span class="cv-act"><button type="button" id="CvStop">Stop</button></span>
+                </div>
+            </div>
+            <div id="CvWaiting" class="fieldDescription" style="color:#e5a33a"></div>
+
+            <details style="margin:.8em 0">
+                <summary style="cursor:pointer">Settings</summary>
+                <div class="cv-set" style="margin-top:.8em">
+                    <label>Start conversions between
+                        <select is="emby-select" id="CvFrom" class="emby-select-withcolor emby-select" style="width:7em"></select> and
+                        <select is="emby-select" id="CvTo" class="emby-select-withcolor emby-select" style="width:7em"></select></label>
+                    <label><input is="emby-checkbox" type="checkbox" id="CvPause"><span>Wait while a tuner is recording</span></label>
+                    <label>HEVC bitrate <input is="emby-input" type="number" id="CvMbps" min="3" max="30"> Mb/s</label>
+                    <label>Keep originals <input is="emby-input" type="number" id="CvKeep" min="0" max="90"> days</label>
+                    <label>List movies from <input is="emby-input" type="number" id="CvMin" min="1" max="60"> Mb/s</label>
+                    <button is="emby-button" type="button" id="CvSave" class="raised button-submit emby-button"><span>Save</span></button>
+                    <span id="CvSaved" class="fieldDescription"></span>
+                </div>
+            </details>
+
+            <div style="display:flex;flex-wrap:wrap;gap:.5em;align-items:center;justify-content:space-between">
+                <div class="cv-tabs" id="CvTabs"></div>
+                <div class="cv-act">
+                    <button type="button" id="CvCheckSel">Check selected for gaps</button>
+                    <button type="button" id="CvQueueSel" class="primary">Convert selected</button>
+                </div>
+            </div>
+            <div id="CvNote" class="fieldDescription"></div>
+            <div class="cv-wrap">
+                <table>
+                    <thead><tr>
+                        <th><input type="checkbox" id="CvAll" aria-label="Select all shown"></th>
+                        <th data-k="Name">Movie</th><th data-k="Where">Where</th>
+                        <th class="n" data-k="Bytes">Size</th><th class="n" data-k="Mbps">Bitrate</th><th class="n" data-k="Minutes">Length</th>
+                        <th class="n" data-k="After">After</th><th class="n" data-k="Save">Saves</th>
+                        <th>Recording check</th><th>Status</th><th></th>
+                    </tr></thead>
+                    <tbody id="CvRows"><tr><td colspan="11">Loading…</td></tr></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <script type="text/javascript">
+        (function () {
+            var pluginUniqueId = "c709ebd6-431f-493c-93cf-1c345db59d49";
+            var GB = 1073741824;
+            var page = document.querySelector("#DvrConvertPage");
+            var rows = [], current = null, waiting = null, tab = "all", sortK = "Save", sortDir = -1, sel = {}, timer = null, lastSig = "";
+
+            function $(s) { return page.querySelector(s); }
+            function esc(s) { var d = document.createElement("div"); d.textContent = s == null ? "" : String(s); return d.innerHTML; }
+            function gb(b) { return (b / GB).toFixed(1) + " GB"; }
+            function clock(min) { var m = Math.round(min); return Math.floor(m / 60) + ":" + ("0" + (m % 60)).slice(-2); }
+            function api(method, path, body) {
+                var o = { type: method, url: ApiClient.getUrl(path), dataType: "json" };
+                if (body) { o.data = JSON.stringify(body); o.contentType = "application/json"; }
+                return ApiClient.ajax(o);
+            }
+
+            function after(r) { return r.Status === "done" && r.NewBytes ? r.NewBytes : r.AfterBytes; }
+            function save(r) { return (r.Status === "done" && r.NewBytes ? r.OriginalBytes - r.NewBytes : r.Bytes - r.AfterBytes); }
+            function attention(r) { return r.Status === "broken" || r.Status === "failed" || r.Health === "warn" || r.Health === "bad"; }
+            var tabs = [["all", "All"], ["todo", "To convert"], ["work", "Queued & converting"], ["done", "Done"], ["att", "Needs attention"], ["skipped", "Skipped"]];
+            function inTab(r, t) {
+                t = t || tab;
+                if (t === "all") return r.Status !== "skipped";
+                if (t === "todo") return r.Status === "todo";
+                if (t === "work") return r.Status === "queued" || r.Status === "running";
+                if (t === "done") return r.Status === "done";
+                if (t === "att") return attention(r);
+                return r.Status === "skipped";
+            }
+
+            function pill(r) {
+                switch (r.Status) {
+                    case "running": return '<span class="pill run">● Converting</span>';
+                    case "queued": return '<span class="pill">Queued</span>';
+                    case "done": return '<span class="pill ok">✓ Done' + (r.UndoUntilUtc ? " · Undo until " + new Date(r.UndoUntilUtc).toLocaleDateString() : "") + "</span>";
+                    case "failed": return '<span class="pill bad" title="' + esc(r.Message) + '">✕ Failed</span><small>' + esc(r.Message) + "</small>";
+                    case "broken": return '<span class="pill warn">Broken copy</span><small>Look for another airing to re-record.</small>';
+                    case "skipped": return '<span class="pill" style="border-style:dashed;opacity:.7">Skipped</span>' + (r.Message ? "<small>" + esc(r.Message) + "</small>" : "");
+                    default: return '<span style="opacity:.5">—</span>' + (r.Message ? "<small>" + esc(r.Message) + "</small>" : "");
+                }
+            }
+            function actions(r) {
+                function b(label, a, primary) { return '<button type="button" data-a="' + a + '" data-id="' + r.Id + '"' + (primary ? ' class="primary"' : "") + ">" + label + "</button>"; }
+                switch (r.Status) {
+                    case "todo": return b("Convert", "queue", true) + b("Skip", "skip");
+                    case "queued": return b("Remove", "unqueue");
+                    case "running": return b("Stop", "stop");
+                    case "done": return r.UndoUntilUtc ? b("Undo", "undo") : "";
+                    case "failed": return b("Retry", "queue", true) + b("Skip", "skip");
+                    case "broken": return b("Convert anyway", "queue") + b("Skip", "skip");
+                    case "skipped": return b("Unskip", "unskip");
+                    default: return "";
+                }
+            }
+
+            function render() {
+                var shown = rows.filter(function (r) { return inTab(r); }).sort(function (a, b) {
+                    var x = sortK === "After" ? after(a) : sortK === "Save" ? save(a) : a[sortK];
+                    var y = sortK === "After" ? after(b) : sortK === "Save" ? save(b) : b[sortK];
+                    return (typeof x === "string" ? x.localeCompare(y) : x - y) * sortDir;
+                });
+                $("#CvRows").innerHTML = shown.length ? shown.map(function (r) {
+                    var h = r.Health ? '<span class="' + (r.Health === "ok" ? "ok" : r.Health) + '">' + esc(r.HealthText) + "</span>" : '<span style="opacity:.5">Not checked</span>';
+                    var broken = r.Status === "broken";
+                    return '<tr><td><input type="checkbox" data-sel="' + r.Id + '"' + (sel[r.Id] ? " checked" : "") + ' aria-label="Select ' + esc(r.Name) + '"></td>' +
+                        "<td><b>" + esc(r.Name) + "</b><small>" + (r.Year || "") + " · added " + new Date(r.Recorded).toLocaleDateString() + "</small></td>" +
+                        "<td>" + esc(r.Where) + "</td>" +
+                        '<td class="n">' + gb(r.Status === "done" && r.OriginalBytes ? r.OriginalBytes : r.Bytes) + '</td><td class="n">' + r.Mbps.toFixed(1) + ' Mb/s</td><td class="n">' + clock(r.Minutes) + "</td>" +
+                        '<td class="n">' + (broken ? "—" : gb(after(r))) + '</td><td class="n ok">' + (broken ? "—" : "−" + gb(save(r))) + "</td>" +
+                        "<td>" + h + "</td><td>" + pill(r) + '</td><td class="cv-act" style="white-space:nowrap">' + actions(r) + "</td></tr>";
+                }).join("") : '<tr><td colspan="11" style="opacity:.7">Nothing here.</td></tr>';
+                $("#CvTabs").innerHTML = tabs.map(function (t) {
+                    var n = rows.filter(function (r) { return inTab(r, t[0]); }).length;
+                    return '<button type="button" class="cv-tab" data-tab="' + t[0] + '" aria-pressed="' + (tab === t[0]) + '">' + t[1] + ' <span style="opacity:.7">' + n + "</span></button>";
+                }).join("");
+                $("#CvAll").checked = shown.length > 0 && shown.every(function (r) { return sel[r.Id]; });
+
+                var done = rows.filter(function (r) { return r.Status === "done"; });
+                var left = rows.filter(function (r) { return ["todo", "queued", "running", "failed"].indexOf(r.Status) >= 0; });
+                var saved = done.reduce(function (s, r) { return s + save(r); }, 0);
+                var toSave = left.reduce(function (s, r) { return s + save(r); }, 0);
+                var hours = left.reduce(function (s, r) { return s + r.Minutes; }, 0) / 2.3 / 60;
+                var kept = rows.reduce(function (s, r) { return s + (r.KeptBytes || 0); }, 0);
+                $("#CvSum").innerHTML =
+                    "<div><span>Saved so far</span><b>" + (saved / GB).toFixed(0) + ' GB</b><div class="cv-bar"><i style="width:' + (saved + toSave > 0 ? (saved / (saved + toSave) * 100).toFixed(1) : 0) + '%"></i></div></div>' +
+                    "<div><span>Still to save</span><b>" + (toSave / GB).toFixed(0) + " GB</b><span>" + left.length + " movies</span></div>" +
+                    "<div><span>Converting time left</span><b>" + Math.round(hours) + " h</b><span>at about 2.3× real time</span></div>" +
+                    "<div><span>Need attention</span><b>" + rows.filter(attention).length + "</b><span>gaps, broken copies, failures</span></div>" +
+                    "<div><span>Originals kept for Undo</span><b>" + (kept / GB).toFixed(0) + " GB</b><span>deleted as each Undo time ends</span></div>";
+
+                var c = current;
+                $("#CvNow").hidden = !c;
+                if (c) {
+                    var phase = { checking: "Checking for gaps", converting: "Converting", verifying: "Checking the new copy", finishing: "Swapping in" }[c.Phase] || c.Phase;
+                    $("#CvPhase").textContent = phase;
+                    $("#CvTitle").textContent = c.Name;
+                    $("#CvBar").style.width = (c.Done * 100).toFixed(1) + "%";
+                    var left2 = c.Speed > 0 ? (c.Minutes * (1 - c.Done)) / c.Speed : null;
+                    $("#CvMeta").textContent = (c.Phase === "converting"
+                        ? Math.round(c.Done * 100) + "% · " + clock(c.Minutes * c.Done) + " of " + clock(c.Minutes) + (c.Speed > 0 ? " · " + c.Speed.toFixed(1) + "× real time · about " + Math.round(left2) + " min left" : "")
+                        : phase + "…") + " · " + c.Where;
+                }
+                $("#CvWaiting").textContent = !c && waiting ? waiting : "";
+            }
+
+            function load(fresh) {
+                return ApiClient.getJSON(ApiClient.getUrl("JellyDvrSpace/Convert", fresh ? { fresh: true } : {})).then(function (d) {
+                    var sig = JSON.stringify(d);
+                    if (sig === lastSig) return;
+                    lastSig = sig;
+                    rows = d.Rows || [];
+                    current = d.Current;
+                    waiting = d.Waiting;
+                    render();
+                });
+            }
+            function act(p, body) { return api("POST", p, body).then(function (r) { if (r && r.Message) $("#CvNote").textContent = r.Message; return load(); }, function () { $("#CvNote").textContent = "That didn't work; see the server log."; }); }
+            function selected() { return Object.keys(sel).filter(function (k) { return sel[k]; }); }
+
+            page.addEventListener("click", function (e) {
+                var t = e.target.closest("[data-tab]");
+                if (t) { tab = t.getAttribute("data-tab"); render(); return; }
+                var h = e.target.closest("th[data-k]");
+                if (h) { var k = h.getAttribute("data-k"); sortDir = sortK === k ? -sortDir : (k === "Name" || k === "Where" ? 1 : -1); sortK = k; render(); return; }
+                var a = e.target.closest("[data-a]");
+                if (a) {
+                    var id = a.getAttribute("data-id"), what = a.getAttribute("data-a");
+                    if (what === "queue") act("JellyDvrSpace/Convert/Queue", { Ids: [id] });
+                    else if (what === "stop") act("JellyDvrSpace/Convert/Stop");
+                    else act("JellyDvrSpace/Convert/" + id + "/" + { skip: "Skip", unskip: "Unskip", unqueue: "Unqueue", undo: "Undo" }[what]);
+                }
+            });
+            page.addEventListener("change", function (e) {
+                var id = e.target.getAttribute && e.target.getAttribute("data-sel");
+                if (id) { sel[id] = e.target.checked; render(); }
+                if (e.target.id === "CvAll") { rows.filter(function (r) { return inTab(r); }).forEach(function (r) { sel[r.Id] = e.target.checked; }); render(); }
+            });
+            $("#CvQueueSel").addEventListener("click", function () { var ids = selected(); if (ids.length) { sel = {}; act("JellyDvrSpace/Convert/Queue", { Ids: ids }); } });
+            $("#CvCheckSel").addEventListener("click", function () { var ids = selected(); if (ids.length) { sel = {}; act("JellyDvrSpace/Convert/Check", { Ids: ids }); } });
+            $("#CvStop").addEventListener("click", function () { act("JellyDvrSpace/Convert/Stop"); });
+
+            function hourOptions(el) {
+                var html = '<option value="-1">Any time</option>';
+                for (var h = 0; h < 24; h++) html += '<option value="' + h + '">' + ((h % 12) || 12) + ":00 " + (h < 12 ? "AM" : "PM") + "</option>";
+                el.innerHTML = html;
+            }
+            hourOptions($("#CvFrom")); hourOptions($("#CvTo"));
+            $("#CvSave").addEventListener("click", function () {
+                ApiClient.getPluginConfiguration(pluginUniqueId).then(function (c) {
+                    c.ConvertFromHour = parseInt($("#CvFrom").value, 10);
+                    c.ConvertToHour = parseInt($("#CvTo").value, 10);
+                    c.ConvertPauseWhileRecording = $("#CvPause").checked;
+                    c.ConvertMbps = parseInt($("#CvMbps").value, 10) || 9;
+                    c.ConvertKeepDays = Math.max(0, parseInt($("#CvKeep").value, 10) || 0);
+                    c.ConvertMinMbps = parseInt($("#CvMin").value, 10) || 12;
+                    return ApiClient.updatePluginConfiguration(pluginUniqueId, c);
+                }).then(function () { $("#CvSaved").textContent = "Saved."; lastSig = ""; return load(true); });
+            });
+
+            page.addEventListener("pageshow", function () {
+                ApiClient.getPluginConfiguration(pluginUniqueId).then(function (c) {
+                    $("#CvFrom").value = c.ConvertFromHour == null ? 1 : c.ConvertFromHour;
+                    $("#CvTo").value = c.ConvertToHour == null ? 7 : c.ConvertToHour;
+                    $("#CvPause").checked = c.ConvertPauseWhileRecording !== false;
+                    $("#CvMbps").value = c.ConvertMbps || 9;
+                    $("#CvKeep").value = c.ConvertKeepDays == null ? 14 : c.ConvertKeepDays;
+                    $("#CvMin").value = c.ConvertMinMbps || 12;
+                });
+                load(true);
+                clearInterval(timer);
+                timer = setInterval(function () { load(false); }, 4000);
+            });
+            page.addEventListener("pagehide", function () { clearInterval(timer); });
+        })();
+    </script>
+</div>
+</body>
+</html>

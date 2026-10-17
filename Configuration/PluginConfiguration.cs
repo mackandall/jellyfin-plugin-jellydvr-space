@@ -105,6 +105,29 @@ public class PluginConfiguration : BasePluginConfiguration
     /// </summary>
     public int TranscodeSweepHours { get; set; } = 6;
 
+    // ---- Convert to HEVC (the Convert page) ----
+
+    /// <summary>Movies at or above this bitrate (Mb/s, H.264, up to 1080p, .ts/.mpg) are listed for converting.</summary>
+    public int ConvertMinMbps { get; set; } = 12;
+
+    /// <summary>The HEVC video bitrate (Mb/s); 9 passed the eye test against the originals.</summary>
+    public int ConvertMbps { get; set; } = 9;
+
+    /// <summary>Conversions start only from this hour (0–23; -1 any time)…</summary>
+    public int ConvertFromHour { get; set; } = 1;
+
+    /// <summary>…until this hour (a movie started before it finishes).</summary>
+    public int ConvertToHour { get; set; } = 7;
+
+    /// <summary>Don't start a conversion while a tuner is recording.</summary>
+    public bool ConvertPauseWhileRecording { get; set; } = true;
+
+    /// <summary>Days the original is kept (hidden, beside the movie) for Undo; 0 deletes it at once.</summary>
+    public int ConvertKeepDays { get; set; } = 14;
+
+    /// <summary>The Arc card's render node (the iGPU is renderD128).</summary>
+    public string ConvertDevice { get; set; } = "/dev/dri/renderD129";
+
     /// <summary>What happens to the recordings chosen to make room.</summary>
     public string Action { get; set; } = ActionMove;
 
