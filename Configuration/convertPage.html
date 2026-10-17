@@ -59,7 +59,7 @@
                     <label>Start conversions between
                         <select is="emby-select" id="CvFrom" class="emby-select-withcolor emby-select" style="width:7em"></select> and
                         <select is="emby-select" id="CvTo" class="emby-select-withcolor emby-select" style="width:7em"></select></label>
-                    <label><input is="emby-checkbox" type="checkbox" id="CvPause"><span>Wait while a tuner is recording</span></label>
+                    <label><input is="emby-checkbox" type="checkbox" id="CvPause"><span>Pause while a tuner is recording (always while Live TV is watched)</span></label>
                     <label>HEVC bitrate <input is="emby-input" type="number" id="CvMbps" min="3" max="30"> Mb/s</label>
                     <label>Keep originals <input is="emby-input" type="number" id="CvKeep" min="0" max="90"> days</label>
                     <label>List movies from <input is="emby-input" type="number" id="CvMin" min="1" max="60"> Mb/s</label>
@@ -185,12 +185,12 @@
                 var c = current;
                 $("#CvNow").hidden = !c;
                 if (c) {
-                    var phase = { checking: "Checking for gaps", converting: "Converting", verifying: "Checking the new copy", finishing: "Swapping in" }[c.Phase] || c.Phase;
+                    var phase = { checking: "Checking for gaps", converting: "Converting", paused: "Paused while a recording or Live TV uses the Arc", verifying: "Checking the new copy", finishing: "Swapping in" }[c.Phase] || c.Phase;
                     $("#CvPhase").textContent = phase;
                     $("#CvTitle").textContent = c.Name;
                     $("#CvBar").style.width = (c.Done * 100).toFixed(1) + "%";
                     var left2 = c.Speed > 0 ? (c.Minutes * (1 - c.Done)) / c.Speed : null;
-                    $("#CvMeta").textContent = (c.Phase === "converting"
+                    $("#CvMeta").textContent = (c.Phase === "converting" || c.Phase === "paused"
                         ? Math.round(c.Done * 100) + "% · " + clock(c.Minutes * c.Done) + " of " + clock(c.Minutes) + (c.Speed > 0 ? " · " + c.Speed.toFixed(1) + "× real time · about " + Math.round(left2) + " min left" : "")
                         : phase + "…") + " · " + c.Where;
                 }

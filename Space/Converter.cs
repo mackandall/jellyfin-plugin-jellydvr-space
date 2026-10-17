@@ -79,6 +79,9 @@ public sealed record ConvertJob(Guid Id, string Name, string Where, double Minut
     public double Speed { get; set; }
 
     public string Phase { get; set; } = "checking";
+
+    /// <summary>Time spent paused (a recording or Live TV had the Arc), left out of the speed.</summary>
+    public double PausedSeconds { get; set; }
 }
 
 /// <summary>
@@ -442,6 +445,12 @@ public sealed class Converter : BackgroundService
             return null;
         }
 
+        if (_sessions.Sessions.Any(s => s.NowPlayingItem?.Type == BaseItemKind.TvChannel))
+        {
+            Waiting = "Waiting: Live TV is being watched";
+            return null;
+        }
+
         if (_sessions.Sessions.Any(s => s.NowPlayingItem?.Id == id))
         {
             Waiting = "Waiting: the next movie is being watched";
@@ -465,6 +474,30 @@ public sealed class Converter : BackgroundService
     }
 
     private static string Hour(int h) => DateTime.Today.AddHours(Math.Clamp(h, 0, 23)).ToString("h tt", CultureInfo.InvariantCulture);
+
+    private const int SigStop = 19;
+    private const int SigCont = 18;
+
+    [System.Runtime.InteropServices.DllImport("libc", EntryPoint = "kill", SetLastError = true)]
+    private static extern int SysKill(int pid, int sig);
+
+    private bool Signal(int pid, int sig)
+    {
+        try
+        {
+            return SysKill(pid, sig) == 0;
+        }
+        catch (Exception ex) when (ex is DllNotFoundException or EntryPointNotFoundException)
+        {
+            _logger.LogDebug(ex, "Couldn't signal ffmpeg");
+            return false;
+        }
+    }
+
+    // A recording in progress (when that setting is on), or someone watching a Live TV channel.
+    private async Task<bool> ArcNeededAsync(CancellationToken ct) =>
+        _sessions.Sessions.Any(s => s.NowPlayingItem?.Type == BaseItemKind.TvChannel)
+        || (Config.ConvertPauseWhileRecording && await RecordingAsync(ct).ConfigureAwait(false));
 
     private async Task<bool> RecordingAsync(CancellationToken ct)
     {
@@ -726,21 +759,57 @@ public sealed class Converter : BackgroundService
             {
                 var s = us / 1e6;
                 job.Done = Math.Clamp(s / total, 0, 1);
-                var elapsed = (DateTime.UtcNow - started).TotalSeconds;
+                var elapsed = (DateTime.UtcNow - started).TotalSeconds - job.PausedSeconds;
                 job.Speed = elapsed > 5 ? s / elapsed : 0;
             }
         };
         p.Start();
         p.BeginErrorReadLine();
         p.BeginOutputReadLine();
+        var paused = false;
         try
         {
-            await p.WaitForExitAsync(ct).ConfigureAwait(false);
+            // BroadcastHub encodes live channels on the same Arc: while a recording runs or Live TV is
+            // watched, the conversion is paused (SIGSTOP) and picks up where it was afterwards.
+            while (true)
+            {
+                var exit = p.WaitForExitAsync(ct);
+                var pausedAt = DateTime.UtcNow;
+                if (await Task.WhenAny(exit, Task.Delay(TimeSpan.FromSeconds(15), ct)).ConfigureAwait(false) == exit)
+                {
+                    await exit.ConfigureAwait(false);
+                    break;
+                }
+
+                if (paused)
+                {
+                    job.PausedSeconds += (DateTime.UtcNow - pausedAt).TotalSeconds;
+                }
+
+                var busy = await ArcNeededAsync(ct).ConfigureAwait(false);
+                if (busy && !paused && Signal(p.Id, SigStop))
+                {
+                    paused = true;
+                    job.Phase = "paused";
+                    _logger.LogInformation("Convert: paused {Path} while a recording or Live TV needs the Arc", input);
+                }
+                else if (!busy && paused && Signal(p.Id, SigCont))
+                {
+                    paused = false;
+                    job.Phase = "converting";
+                    _logger.LogInformation("Convert: resumed {Path}", input);
+                }
+            }
         }
         catch (OperationCanceledException)
         {
             try
             {
+                if (paused)
+                {
+                    Signal(p.Id, SigCont);
+                }
+
                 p.Kill(entireProcessTree: true);
             }
             catch (InvalidOperationException)
