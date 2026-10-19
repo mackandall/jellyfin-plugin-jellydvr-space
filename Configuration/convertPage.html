@@ -62,6 +62,7 @@
                     <label><input is="emby-checkbox" type="checkbox" id="CvPause"><span>Pause while a tuner is recording (always while Live TV is watched)</span></label>
                     <label>HEVC bitrate <input is="emby-input" type="number" id="CvMbps" min="3" max="30"> Mb/s</label>
                     <label>Keep originals <input is="emby-input" type="number" id="CvKeep" min="0" max="90"> days</label>
+                    <label>Ignore gaps in the first <input is="emby-input" type="number" id="CvIgnore" min="0" max="600"> seconds (the tuner settling)</label>
                     <label>List movies from <input is="emby-input" type="number" id="CvMin" min="1" max="60"> Mb/s</label>
                     <button is="emby-button" type="button" id="CvSave" class="raised button-submit emby-button"><span>Save</span></button>
                     <span id="CvSaved" class="fieldDescription"></span>
@@ -247,6 +248,7 @@
                     c.ConvertMbps = parseInt($("#CvMbps").value, 10) || 9;
                     c.ConvertKeepDays = Math.max(0, parseInt($("#CvKeep").value, 10) || 0);
                     c.ConvertMinMbps = parseInt($("#CvMin").value, 10) || 12;
+                    c.ConvertIgnoreGapsSeconds = Math.max(0, parseInt($("#CvIgnore").value, 10) || 0);
                     return ApiClient.updatePluginConfiguration(pluginUniqueId, c);
                 }).then(function () { $("#CvSaved").textContent = "Saved."; lastSig = ""; return load(true); });
             });
@@ -259,6 +261,7 @@
                     $("#CvMbps").value = c.ConvertMbps || 9;
                     $("#CvKeep").value = c.ConvertKeepDays == null ? 14 : c.ConvertKeepDays;
                     $("#CvMin").value = c.ConvertMinMbps || 12;
+                    $("#CvIgnore").value = c.ConvertIgnoreGapsSeconds == null ? 30 : c.ConvertIgnoreGapsSeconds;
                 });
                 load(true);
                 clearInterval(timer);

@@ -768,6 +768,10 @@ public sealed class Converter : BackgroundService
             // child_device picks the GPU; "qsv=hw:<path>" is ignored and lands on the first Intel GPU (the UHD 770).
             "-init_hw_device", "qsv=hw,child_device=" + device, "-filter_hw_device", "hw",
             "-hwaccel", "qsv", "-hwaccel_output_format", "qsv", "-c:v", "h264_qsv",
+            // Some recordings open with seconds of stream that carry no picture size or sample rate yet
+            // (Red Dawn 2012, Weapons, A Southern Haunting); with the default look-ahead ffmpeg starts
+            // without them and fails at once. Normal files are read no further than before.
+            "-probesize", "200M", "-analyzeduration", "120M",
         };
         if (skip)
         {
@@ -901,7 +905,8 @@ public sealed class Converter : BackgroundService
 
     /// <summary>
     /// Reads the video's timestamps: a jump of more than 2 s means the recording lost signal there
-    /// (Witch Hunt: 84 s gone at 27:30). About a minute for a two-hour movie.
+    /// (Witch Hunt: 84 s gone at 27:30). About a minute for a two-hour movie. Jumps in the first
+    /// <see cref="PluginConfiguration.ConvertIgnoreGapsSeconds"/> are the tuner settling, before the movie starts.
     /// </summary>
     public async Task<(string Health, string Text)> CheckGapsAsync(string path, CancellationToken ct)
     {
@@ -913,6 +918,7 @@ public sealed class Converter : BackgroundService
 
         using var p = Process.Start(psi) ?? throw new InvalidOperationException("ffprobe didn't start");
         _ = p.StandardError.ReadToEndAsync(ct);
+        var ignore = Math.Max(0, Config.ConvertIgnoreGapsSeconds);
         double first = double.NaN, prev = double.NaN, biggest = 0, biggestAt = 0, lost = 0;
         var gaps = 0;
         string? line;
@@ -927,7 +933,7 @@ public sealed class Converter : BackgroundService
             {
                 first = t;
             }
-            else if (t - prev > 2)
+            else if (t - prev > 2 && prev - first >= ignore)
             {
                 gaps++;
                 lost += t - prev;

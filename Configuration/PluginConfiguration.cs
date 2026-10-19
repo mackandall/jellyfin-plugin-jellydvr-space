@@ -125,6 +125,9 @@ public class PluginConfiguration : BasePluginConfiguration
     /// <summary>Days the original is kept (hidden, beside the movie) for Undo; 0 deletes it at once.</summary>
     public int ConvertKeepDays { get; set; } = 14;
 
+    /// <summary>Gaps this many seconds into a recording are ignored by the gap check (the tuner settling; 0 counts them all).</summary>
+    public int ConvertIgnoreGapsSeconds { get; set; } = 30;
+
     /// <summary>The Arc card's render node (the iGPU is renderD128).</summary>
     public string ConvertDevice { get; set; } = "/dev/dri/renderD129";
 
