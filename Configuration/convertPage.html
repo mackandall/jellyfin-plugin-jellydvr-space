@@ -173,12 +173,12 @@
                 var left = rows.filter(function (r) { return ["todo", "queued", "running", "failed"].indexOf(r.Status) >= 0; });
                 var saved = done.reduce(function (s, r) { return s + save(r); }, 0);
                 var toSave = left.reduce(function (s, r) { return s + save(r); }, 0);
-                var hours = left.reduce(function (s, r) { return s + r.Minutes; }, 0) / 2.3 / 60;
+                var hours = left.reduce(function (s, r) { return s + r.Minutes; }, 0) / 9 / 60;
                 var kept = rows.reduce(function (s, r) { return s + (r.KeptBytes || 0); }, 0);
                 $("#CvSum").innerHTML =
                     "<div><span>Saved so far</span><b>" + (saved / GB).toFixed(0) + ' GB</b><div class="cv-bar"><i style="width:' + (saved + toSave > 0 ? (saved / (saved + toSave) * 100).toFixed(1) : 0) + '%"></i></div></div>' +
                     "<div><span>Still to save</span><b>" + (toSave / GB).toFixed(0) + " GB</b><span>" + left.length + " movies</span></div>" +
-                    "<div><span>Converting time left</span><b>" + Math.round(hours) + " h</b><span>at about 2.3× real time</span></div>" +
+                    "<div><span>Converting time left</span><b>" + Math.round(hours) + " h</b><span>at about 9× real time</span></div>" +
                     "<div><span>Need attention</span><b>" + rows.filter(attention).length + "</b><span>gaps, broken copies, failures</span></div>" +
                     "<div><span>Originals kept for Undo</span><b>" + (kept / GB).toFixed(0) + " GB</b><span>deleted as each Undo time ends</span></div>";
 

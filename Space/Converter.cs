@@ -451,6 +451,12 @@ public sealed class Converter : BackgroundService
             return null;
         }
 
+        if (CaptureRunning())
+        {
+            Waiting = "Waiting: a BroadcastHub capture is using the Arc";
+            return null;
+        }
+
         if (_sessions.Sessions.Any(s => s.NowPlayingItem?.Id == id))
         {
             Waiting = "Waiting: the next movie is being watched";
@@ -494,10 +500,43 @@ public sealed class Converter : BackgroundService
         }
     }
 
-    // A recording in progress (when that setting is on), or someone watching a Live TV channel.
+    // A recording in progress (when that setting is on), someone watching a Live TV channel, or a BroadcastHub
+    // capture encoding on the Arc (also those Channels DVR starts, which Jellyfin doesn't know about).
     private async Task<bool> ArcNeededAsync(CancellationToken ct) =>
         _sessions.Sessions.Any(s => s.NowPlayingItem?.Type == BaseItemKind.TvChannel)
+        || CaptureRunning()
         || (Config.ConvertPauseWhileRecording && await RecordingAsync(ct).ConfigureAwait(false));
+
+    private static bool CaptureRunning()
+    {
+        try
+        {
+            foreach (var dir in Directory.EnumerateDirectories("/proc"))
+            {
+                if (!char.IsDigit(Path.GetFileName(dir)[0]))
+                {
+                    continue;
+                }
+
+                try
+                {
+                    if (File.ReadAllText(Path.Combine(dir, "comm")).Trim() == "magewell2ts")
+                    {
+                        return true;
+                    }
+                }
+                catch (IOException)
+                {
+                    // The process ended while we looked.
+                }
+            }
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+        }
+
+        return false;
+    }
 
     private async Task<bool> RecordingAsync(CancellationToken ct)
     {
@@ -714,11 +753,29 @@ public sealed class Converter : BackgroundService
     {
         var mbps = Math.Clamp(cfg.ConvertMbps, 3, 30);
         var device = string.IsNullOrWhiteSpace(cfg.ConvertDevice) ? "/dev/dri/renderD129" : cfg.ConvertDevice.Trim();
+        // Some captures (most of the Emby archive's) open with one video packet stamped 2^33, outside
+        // MPEG-TS's 33-bit clock. ffmpeg then starts the copy ~25 h late, its clock wraps partway and the
+        // copy can't be measured (it fails the check below although complete). Half a second in, it's gone.
+        var skip = await BrokenFirstVideoPtsAsync(input, ct).ConfigureAwait(false);
+        if (skip)
+        {
+            _logger.LogInformation("Convert: {Path} opens with a broken video timestamp; starting 0.5 s in", input);
+        }
+
         var args = new List<string>
         {
             "-hide_banner", "-nostdin", "-y",
-            "-init_hw_device", "qsv=hw:" + device, "-filter_hw_device", "hw",
+            // child_device picks the GPU; "qsv=hw:<path>" is ignored and lands on the first Intel GPU (the UHD 770).
+            "-init_hw_device", "qsv=hw,child_device=" + device, "-filter_hw_device", "hw",
             "-hwaccel", "qsv", "-hwaccel_output_format", "qsv", "-c:v", "h264_qsv",
+        };
+        if (skip)
+        {
+            args.AddRange(new[] { "-ss", "0.5" });
+        }
+
+        args.AddRange(new[]
+        {
             "-i", input,
             "-map", "0:v:0", "-map", "0:a?",
             "-c:v", "hevc_qsv", "-preset", "slow",
@@ -730,7 +787,7 @@ public sealed class Converter : BackgroundService
             "-f", "mpegts",
             "-progress", "pipe:1", "-nostats",
             output
-        };
+        });
         var psi = new ProcessStartInfo { FileName = _encoder.EncoderPath, UseShellExecute = false, RedirectStandardOutput = true, RedirectStandardError = true, CreateNoWindow = true };
         foreach (var a in args)
         {
@@ -755,7 +812,7 @@ public sealed class Converter : BackgroundService
         p.OutputDataReceived += (_, e) =>
         {
             if (e.Data is { } line && line.StartsWith("out_time_us=", StringComparison.Ordinal)
-                && long.TryParse(line.AsSpan(12), out var us) && us > 0)
+                && long.TryParse(line.AsSpan(12), out var us) && us > 0 && us / 1e6 < total * 1.25)
             {
                 var s = us / 1e6;
                 job.Done = Math.Clamp(s / total, 0, 1);
@@ -791,7 +848,7 @@ public sealed class Converter : BackgroundService
                 {
                     paused = true;
                     job.Phase = "paused";
-                    _logger.LogInformation("Convert: paused {Path} while a recording or Live TV needs the Arc", input);
+                    _logger.LogInformation("Convert: paused {Path} while a recording, Live TV or a BroadcastHub capture needs the Arc", input);
                 }
                 else if (!busy && paused && Signal(p.Id, SigCont))
                 {
@@ -903,6 +960,31 @@ public sealed class Converter : BackgroundService
     }
 
     private static string Clock(TimeSpan t) => t.TotalHours >= 1 ? t.ToString(@"h\:mm\:ss", CultureInfo.InvariantCulture) : t.ToString(@"m\:ss", CultureInfo.InvariantCulture);
+
+    /// <summary>True when the first video packet's timestamp is outside MPEG-TS's 33-bit clock (seen: exactly 2^33).</summary>
+    private async Task<bool> BrokenFirstVideoPtsAsync(string path, CancellationToken ct)
+    {
+        try
+        {
+            var psi = new ProcessStartInfo { FileName = _encoder.ProbePath, UseShellExecute = false, RedirectStandardOutput = true, RedirectStandardError = true, CreateNoWindow = true };
+            foreach (var a in new[] { "-v", "error", "-select_streams", "v:0", "-read_intervals", "%+#1", "-show_entries", "packet=pts", "-of", "csv=p=0", path })
+            {
+                psi.ArgumentList.Add(a);
+            }
+
+            using var p = Process.Start(psi) ?? throw new InvalidOperationException("ffprobe didn't start");
+            _ = p.StandardError.ReadToEndAsync(ct);
+            var text = await p.StandardOutput.ReadToEndAsync(ct).ConfigureAwait(false);
+            await p.WaitForExitAsync(ct).ConfigureAwait(false);
+            var first = text.Split('\n', ',')[0].Trim();
+            return long.TryParse(first, NumberStyles.Integer, CultureInfo.InvariantCulture, out var pts) && pts >= 1L << 33;
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _logger.LogDebug(ex, "Convert: couldn't read the first video timestamp of {Path}", path);
+            return false;
+        }
+    }
 
     private async Task<(double Seconds, int Audio)> ProbeAsync(string path, CancellationToken ct)
     {
