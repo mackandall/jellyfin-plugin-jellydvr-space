@@ -44,6 +44,9 @@ public sealed class ConvertEntry
 
     public string? HealthText { get; set; }
 
+    /// <summary>Set by "Convert anyway" on a broken movie: convert it in spite of its gaps.</summary>
+    public bool GapsAccepted { get; set; }
+
     public string? Message { get; set; }
 
     public long OriginalBytes { get; set; }
@@ -249,6 +252,8 @@ public sealed class Converter : BackgroundService
                 var e = Get(id);
                 if (e.Status is ConvertEntry.Todo or ConvertEntry.Failed or ConvertEntry.Broken or ConvertEntry.Skipped)
                 {
+                    // Queueing a broken movie is the page's "Convert anyway".
+                    e.GapsAccepted |= e.Status == ConvertEntry.Broken;
                     e.Status = ConvertEntry.Queued;
                     e.Message = null;
                     e.UpdatedUtc = DateTime.UtcNow;
@@ -587,15 +592,17 @@ public sealed class Converter : BackgroundService
 
             // 1. Is this a whole recording? A broken one is better re-recorded than converted.
             var (health, text) = await CheckGapsAsync(path, ct).ConfigureAwait(false);
+            bool accepted;
             lock (_lock)
             {
                 var e = Get(id);
                 e.Health = health;
                 e.HealthText = text;
+                accepted = e.GapsAccepted;
                 Save();
             }
 
-            if (health != "ok")
+            if (health != "ok" && !(health == "warn" && accepted))
             {
                 Finish(id, ConvertEntry.Broken, text);
                 return;
