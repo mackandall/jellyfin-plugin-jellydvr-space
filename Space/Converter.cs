@@ -138,6 +138,7 @@ public sealed class Converter : BackgroundService
         Directory.CreateDirectory(folder);
         _storePath = System.IO.Path.Combine(folder, "convert.json");
         Load();
+        RecordingFileOps.FileMoved += OnFileMoved;
     }
 
     private static PluginConfiguration Config => Plugin.Instance?.Configuration ?? new PluginConfiguration();
@@ -727,6 +728,20 @@ public sealed class Converter : BackgroundService
         catch (Exception ex)
         {
             _logger.LogDebug(ex, "Refresh after convert failed");
+        }
+    }
+
+    // A kept original moved with its recording: it's still deleted when its time is up.
+    private void OnFileMoved(string from, string to)
+    {
+        lock (_lock)
+        {
+            var moved = _entries.Values.Where(e => e.BackupPath == from).ToList();
+            moved.ForEach(e => e.BackupPath = to);
+            if (moved.Count > 0)
+            {
+                Save();
+            }
         }
     }
 

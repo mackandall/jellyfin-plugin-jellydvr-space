@@ -13,6 +13,9 @@ namespace Jellyfin.Plugin.DvrSpace.Space;
 /// </summary>
 internal static class RecordingFileOps
 {
+    /// <summary>Each file a move put somewhere else (from, to), once the move is complete.</summary>
+    public static event Action<string, string>? FileMoved;
+
     private static readonly HashSet<string> VideoExtensions = new(StringComparer.OrdinalIgnoreCase)
     {
         ".ts", ".mkv", ".mp4", ".m4v", ".m2ts", ".mpg", ".mpeg", ".avi", ".wtv", ".mov"
@@ -68,6 +71,11 @@ internal static class RecordingFileOps
         foreach (var src in files)
         {
             File.Delete(src);
+        }
+
+        foreach (var src in files)
+        {
+            FileMoved?.Invoke(src, Path.Combine(destDir, Path.GetFileName(src)));
         }
 
         var srcDir = Path.GetDirectoryName(videoPath)!;
@@ -126,13 +134,18 @@ internal static class RecordingFileOps
         }
     }
 
-    /// <summary>The recording plus its sidecars: same base name followed by "." or "-".</summary>
+    /// <summary>
+    /// The recording plus its sidecars: same base name followed by "." or "-", and the originals
+    /// kept hidden beside it for Undo (".name.original.ts" from the Comskip plugin's trims and cuts,
+    /// with the .edl it keeps for it, ".name.h264-original.ts" from Convert to HEVC), so they move
+    /// and are deleted with it.
+    /// </summary>
     public static List<string> RecordingFiles(string videoPath)
     {
         var dir = Path.GetDirectoryName(videoPath)!;
         var baseName = Path.GetFileNameWithoutExtension(videoPath);
         return Directory.GetFiles(dir)
-            .Where(f => f == videoPath || BelongsTo(Path.GetFileName(f), baseName))
+            .Where(f => f == videoPath || BelongsTo(Path.GetFileName(f), baseName) || IsHiddenOriginal(Path.GetFileName(f), baseName))
             .Where(f => !f.EndsWith(".jdvrpart", StringComparison.Ordinal))
             .ToList();
     }
@@ -175,6 +188,10 @@ internal static class RecordingFileOps
 
         return false;
     }
+
+    private static bool IsHiddenOriginal(string fileName, string baseName) =>
+        fileName.StartsWith("." + baseName + ".original.", StringComparison.Ordinal)
+        || fileName.StartsWith("." + baseName + ".h264-original.", StringComparison.Ordinal);
 
     private static bool BelongsTo(string fileName, string baseName) =>
         fileName.StartsWith(baseName + ".", StringComparison.Ordinal) || fileName.StartsWith(baseName + "-", StringComparison.Ordinal);
