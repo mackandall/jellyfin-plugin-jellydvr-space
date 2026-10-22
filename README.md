@@ -64,7 +64,37 @@ destination aborts that recording untouched. Emptied show/season folders are rem
 about both folders, so the moved item keeps its watched state and resume point, and the Comskip plugin
 re-imports its breaks from the moved `.edl`.
 
+## Convert to HEVC
+
+Dashboard → Plugins → JellyDVR Space → **Convert to HEVC →** lists movies captured as heavy H.264
+and re-encodes the ones you pick as HEVC, one at a time, on an Intel GPU (Quick Sync, through Jellyfin's
+ffmpeg). Each is first checked for gaps (a recording that lost signal is better re-recorded), then encoded
+beside itself, checked (same length, same audio tracks) and swapped in under its own name; the original is
+kept hidden for Undo (14 days by default). Conversions run in the hours you set and pause while a tuner
+records, Live TV is watched or a program you list runs (a capture encoder on the same GPU, say). The GPU
+is the QSV device in Jellyfin's Playback settings unless you name another render node.
+
 ## Install
+
+### From the JellyDVR plugin repository (no build needed)
+
+1. Dashboard → Plugins → **Repositories** → add (one list for all the JellyDVR plugins):
+   ```
+   https://raw.githubusercontent.com/mackandall/jdvr-client/main/plugins/manifest.json
+   ```
+2. Dashboard → Plugins → **Catalog** → **JellyDVR Space** → Install, then restart Jellyfin.
+
+### "Move to archive…" in the web client's item menu (optional)
+
+jellyfin-web has to load one script for this. Its `index.html` belongs to root, so it's a command run once
+with sudo, and again after every jellyfin-web upgrade (which overwrites it):
+
+```
+curl -fsSLO https://raw.githubusercontent.com/mackandall/jellyfin-plugin-jellydvr-space/main/install-web.sh
+sudo bash install-web.sh
+```
+
+### Or build from source
 
 ```
 dotnet build -c Release

@@ -11,6 +11,7 @@ using System.Threading.Tasks;
 using Jellyfin.Data.Enums;
 using Jellyfin.Plugin.DvrSpace.Configuration;
 using MediaBrowser.Common.Configuration;
+using MediaBrowser.Controller.Configuration;
 using MediaBrowser.Controller.Entities;
 using MediaBrowser.Controller.Entities.Movies;
 using MediaBrowser.Controller.Library;
@@ -83,12 +84,12 @@ public sealed record ConvertJob(Guid Id, string Name, string Where, double Minut
 
     public string Phase { get; set; } = "checking";
 
-    /// <summary>Time spent paused (a recording or Live TV had the Arc), left out of the speed.</summary>
+    /// <summary>Time spent paused (a recording or Live TV needed the GPU), left out of the speed.</summary>
     public double PausedSeconds { get; set; }
 }
 
 /// <summary>
-/// Converts the heavy H.264 movie captures (1080p, before the Arc card) to HEVC on the Arc, one at a
+/// Converts heavy H.264 movie captures to HEVC on an Intel GPU (Quick Sync), one at a
 /// time, from a queue the Convert page fills. Each movie is first checked for gaps (a recording that
 /// lost signal; converting it would only shrink a broken copy), then encoded beside itself as a
 /// hidden file, verified (same length within 1.5 s, same audio tracks) and swapped in under its own
@@ -109,6 +110,7 @@ public sealed class Converter : BackgroundService
     private readonly IMediaEncoder _encoder;
     private readonly IProviderManager _providers;
     private readonly IFileSystem _fileSystem;
+    private readonly IServerConfigurationManager _serverConfig;
     private readonly string _storePath;
     private readonly object _lock = new();
     private readonly SemaphoreSlim _wake = new(0);
@@ -125,6 +127,7 @@ public sealed class Converter : BackgroundService
         IMediaEncoder encoder,
         IProviderManager providers,
         IFileSystem fileSystem,
+        IServerConfigurationManager serverConfig,
         IApplicationPaths paths)
     {
         _logger = logger;
@@ -134,6 +137,7 @@ public sealed class Converter : BackgroundService
         _encoder = encoder;
         _providers = providers;
         _fileSystem = fileSystem;
+        _serverConfig = serverConfig;
         var folder = System.IO.Path.Combine(paths.PluginConfigurationsPath, "JellyDvrSpace");
         Directory.CreateDirectory(folder);
         _storePath = System.IO.Path.Combine(folder, "convert.json");
@@ -457,9 +461,9 @@ public sealed class Converter : BackgroundService
             return null;
         }
 
-        if (CaptureRunning())
+        if (GpuProgramRunning(cfg) is { } program)
         {
-            Waiting = "Waiting: a BroadcastHub capture is using the Arc";
+            Waiting = $"Waiting: {program} is using the GPU";
             return null;
         }
 
@@ -506,15 +510,23 @@ public sealed class Converter : BackgroundService
         }
     }
 
-    // A recording in progress (when that setting is on), someone watching a Live TV channel, or a BroadcastHub
-    // capture encoding on the Arc (also those Channels DVR starts, which Jellyfin doesn't know about).
-    private async Task<bool> ArcNeededAsync(CancellationToken ct) =>
+    // A recording in progress (when that setting is on), someone watching a Live TV channel, or one of the
+    // programs listed in the settings (a capture encoder on the same GPU, which Jellyfin doesn't know about).
+    private async Task<bool> GpuNeededAsync(CancellationToken ct) =>
         _sessions.Sessions.Any(s => s.NowPlayingItem?.Type == BaseItemKind.TvChannel)
-        || CaptureRunning()
+        || GpuProgramRunning(Config) is not null
         || (Config.ConvertPauseWhileRecording && await RecordingAsync(ct).ConfigureAwait(false));
 
-    private static bool CaptureRunning()
+    // The first of the settings' programs that is running, by process name; null when none is (or none are listed).
+    private static string? GpuProgramRunning(PluginConfiguration cfg)
     {
+        var names = (cfg.ConvertWaitForPrograms ?? string.Empty)
+            .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        if (names.Length == 0)
+        {
+            return null;
+        }
+
         try
         {
             foreach (var dir in Directory.EnumerateDirectories("/proc"))
@@ -526,9 +538,10 @@ public sealed class Converter : BackgroundService
 
                 try
                 {
-                    if (File.ReadAllText(Path.Combine(dir, "comm")).Trim() == "magewell2ts")
+                    var comm = File.ReadAllText(Path.Combine(dir, "comm")).Trim();
+                    if (Array.Find(names, n => n == comm) is { } name)
                     {
-                        return true;
+                        return name;
                     }
                 }
                 catch (IOException)
@@ -541,7 +554,7 @@ public sealed class Converter : BackgroundService
         {
         }
 
-        return false;
+        return null;
     }
 
     private async Task<bool> RecordingAsync(CancellationToken ct)
@@ -774,7 +787,7 @@ public sealed class Converter : BackgroundService
     private async Task<(bool Ok, string Why)> EncodeAsync(string input, string output, double minutes, PluginConfiguration cfg, ConvertJob job, CancellationToken ct)
     {
         var mbps = Math.Clamp(cfg.ConvertMbps, 3, 30);
-        var device = string.IsNullOrWhiteSpace(cfg.ConvertDevice) ? "/dev/dri/renderD129" : cfg.ConvertDevice.Trim();
+        var device = !string.IsNullOrWhiteSpace(cfg.ConvertDevice) ? cfg.ConvertDevice.Trim() : _serverConfig.GetEncodingOptions().QsvDevice?.Trim();
         // Some captures (most of the Emby archive's) open with one video packet stamped 2^33, outside
         // MPEG-TS's 33-bit clock. ffmpeg then starts the copy ~25 h late, its clock wraps partway and the
         // copy can't be measured (it fails the check below although complete). Half a second in, it's gone.
@@ -787,8 +800,8 @@ public sealed class Converter : BackgroundService
         var args = new List<string>
         {
             "-hide_banner", "-nostdin", "-y",
-            // child_device picks the GPU; "qsv=hw:<path>" is ignored and lands on the first Intel GPU (the UHD 770).
-            "-init_hw_device", "qsv=hw,child_device=" + device, "-filter_hw_device", "hw",
+            // child_device picks the GPU; "qsv=hw:<path>" is ignored and lands on the first Intel GPU.
+            "-init_hw_device", string.IsNullOrEmpty(device) ? "qsv=hw" : "qsv=hw,child_device=" + device, "-filter_hw_device", "hw",
             "-hwaccel", "qsv", "-hwaccel_output_format", "qsv", "-c:v", "h264_qsv",
             // Some recordings open with seconds of stream that carry no picture size or sample rate yet
             // (Red Dawn 2012, Weapons, A Southern Haunting); with the default look-ahead ffmpeg starts
@@ -852,8 +865,8 @@ public sealed class Converter : BackgroundService
         var paused = false;
         try
         {
-            // BroadcastHub encodes live channels on the same Arc: while a recording runs or Live TV is
-            // watched, the conversion is paused (SIGSTOP) and picks up where it was afterwards.
+            // Live channels may be encoded on the same GPU: while a recording runs, Live TV is watched or a
+            // listed program runs, the conversion is paused (SIGSTOP) and picks up where it was afterwards.
             while (true)
             {
                 var exit = p.WaitForExitAsync(ct);
@@ -869,12 +882,12 @@ public sealed class Converter : BackgroundService
                     job.PausedSeconds += (DateTime.UtcNow - pausedAt).TotalSeconds;
                 }
 
-                var busy = await ArcNeededAsync(ct).ConfigureAwait(false);
+                var busy = await GpuNeededAsync(ct).ConfigureAwait(false);
                 if (busy && !paused && Signal(p.Id, SigStop))
                 {
                     paused = true;
                     job.Phase = "paused";
-                    _logger.LogInformation("Convert: paused {Path} while a recording, Live TV or a BroadcastHub capture needs the Arc", input);
+                    _logger.LogInformation("Convert: paused {Path} while a recording, Live TV or another program needs the GPU", input);
                 }
                 else if (!busy && paused && Signal(p.Id, SigCont))
                 {

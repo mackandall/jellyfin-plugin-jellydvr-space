@@ -128,8 +128,17 @@ public class PluginConfiguration : BasePluginConfiguration
     /// <summary>Gaps this many seconds into a recording are ignored by the gap check (the tuner settling; 0 counts them all).</summary>
     public int ConvertIgnoreGapsSeconds { get; set; } = 30;
 
-    /// <summary>The Arc card's render node (the iGPU is renderD128).</summary>
-    public string ConvertDevice { get; set; } = "/dev/dri/renderD129";
+    /// <summary>
+    /// The Intel GPU's render node for Quick Sync (e.g. /dev/dri/renderD129). Empty uses the QSV device in
+    /// Jellyfin's Playback settings, or else the first Intel GPU.
+    /// </summary>
+    public string ConvertDevice { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Programs that need the GPU (process names, comma-separated, e.g. a capture encoder): a conversion
+    /// waits, or pauses, while one of them runs.
+    /// </summary>
+    public string ConvertWaitForPrograms { get; set; } = string.Empty;
 
     /// <summary>What happens to the recordings chosen to make room.</summary>
     public string Action { get; set; } = ActionMove;

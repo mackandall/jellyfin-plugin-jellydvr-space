@@ -39,7 +39,7 @@
     <div data-role="content">
         <div class="content-primary">
             <h2>Convert to HEVC</h2>
-            <div class="fieldDescription">Movies captured as heavy H.264 (1080p, before the Arc card) are re-encoded on the Arc as HEVC, one at a time. Each one is first checked for gaps: a recording that lost signal is better re-recorded than converted. The new copy is written beside the movie, checked (same length, same audio tracks), and takes the movie's place under its own name; the original is kept hidden for Undo.</div>
+            <div class="fieldDescription">Movies captured as heavy H.264 are re-encoded as HEVC on an Intel GPU (Quick Sync), one at a time. Each one is first checked for gaps: a recording that lost signal is better re-recorded than converted. The new copy is written beside the movie, checked (same length, same audio tracks), and takes the movie's place under its own name; the original is kept hidden for Undo.</div>
 
             <div class="cv-sum" id="CvSum"></div>
 
@@ -64,6 +64,8 @@
                     <label>Keep originals <input is="emby-input" type="number" id="CvKeep" min="0" max="90"> days</label>
                     <label>Ignore gaps in the first <input is="emby-input" type="number" id="CvIgnore" min="0" max="600"> seconds (the tuner settling)</label>
                     <label>List movies from <input is="emby-input" type="number" id="CvMin" min="1" max="60"> Mb/s</label>
+                    <label>GPU <input is="emby-input" type="text" id="CvDevice" style="width:14em" placeholder="Jellyfin's QSV device"> (render node, e.g. /dev/dri/renderD129; empty: the QSV device in Jellyfin's Playback settings, or the first Intel GPU)</label>
+                    <label>Also wait while these run <input is="emby-input" type="text" id="CvWaitFor" style="width:14em" placeholder="none"> (program names, comma-separated, e.g. a capture encoder on the same GPU)</label>
                     <button is="emby-button" type="button" id="CvSave" class="raised button-submit emby-button"><span>Save</span></button>
                     <span id="CvSaved" class="fieldDescription"></span>
                 </div>
@@ -186,7 +188,7 @@
                 var c = current;
                 $("#CvNow").hidden = !c;
                 if (c) {
-                    var phase = { checking: "Checking for gaps", converting: "Converting", paused: "Paused while a recording or Live TV uses the Arc", verifying: "Checking the new copy", finishing: "Swapping in" }[c.Phase] || c.Phase;
+                    var phase = { checking: "Checking for gaps", converting: "Converting", paused: "Paused while a recording, Live TV or another program needs the GPU", verifying: "Checking the new copy", finishing: "Swapping in" }[c.Phase] || c.Phase;
                     $("#CvPhase").textContent = phase;
                     $("#CvTitle").textContent = c.Name;
                     $("#CvBar").style.width = (c.Done * 100).toFixed(1) + "%";
@@ -249,6 +251,8 @@
                     c.ConvertKeepDays = Math.max(0, parseInt($("#CvKeep").value, 10) || 0);
                     c.ConvertMinMbps = parseInt($("#CvMin").value, 10) || 12;
                     c.ConvertIgnoreGapsSeconds = Math.max(0, parseInt($("#CvIgnore").value, 10) || 0);
+                    c.ConvertDevice = $("#CvDevice").value.trim();
+                    c.ConvertWaitForPrograms = $("#CvWaitFor").value.trim();
                     return ApiClient.updatePluginConfiguration(pluginUniqueId, c);
                 }).then(function () { $("#CvSaved").textContent = "Saved."; lastSig = ""; return load(true); });
             });
@@ -262,6 +266,8 @@
                     $("#CvKeep").value = c.ConvertKeepDays == null ? 14 : c.ConvertKeepDays;
                     $("#CvMin").value = c.ConvertMinMbps || 12;
                     $("#CvIgnore").value = c.ConvertIgnoreGapsSeconds == null ? 30 : c.ConvertIgnoreGapsSeconds;
+                    $("#CvDevice").value = c.ConvertDevice || "";
+                    $("#CvWaitFor").value = c.ConvertWaitForPrograms || "";
                 });
                 load(true);
                 clearInterval(timer);
