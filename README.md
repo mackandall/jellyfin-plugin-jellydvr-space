@@ -90,7 +90,7 @@ jellyfin-web has to load one script for this. Its `index.html` belongs to root, 
 with sudo, and again after every jellyfin-web upgrade (which overwrites it):
 
 ```
-curl -fsSLO https://raw.githubusercontent.com/mackandall/jellyfin-plugin-jellydvr-space/main/install-web.sh
+curl -fsSLO https://raw.githubusercontent.com/mackandall/jellyfin-plugin-jellydvr-space/master/install-web.sh
 sudo bash install-web.sh
 ```
 
