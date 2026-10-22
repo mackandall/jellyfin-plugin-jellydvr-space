@@ -147,13 +147,13 @@ public sealed partial class SpaceManager : BackgroundService
 
             if (plan.NeededBytes <= 0)
             {
-                _logger.LogDebug("Recordings drive has {Free:F0} GB free (keeping {Keep} GB); nothing to do", plan.FreeBytes / (double)Gb, cfg.KeepFreeGb);
+                _logger.LogDebug("Recordings drive has {Free:F0} GB free (keeping {Keep} GB); nothing to do", plan.FreeBytes / (double)Gb, plan.KeepFreeBytes / Gb);
                 return plan;
             }
 
             _logger.LogInformation(
                 "Recordings drive has {Free:F0} GB free, below the {Keep} GB floor ({Reason}); {Count} recording(s) planned{Mode}",
-                plan.FreeBytes / (double)Gb, cfg.KeepFreeGb, reason, plan.Items.Count(i => i.Action != PlanItem.ActionNone),
+                plan.FreeBytes / (double)Gb, plan.KeepFreeBytes / Gb, reason, plan.Items.Count(i => i.Action != PlanItem.ActionNone),
                 cfg.Mode == PluginConfiguration.ModeActive ? string.Empty : " (preview: nothing done)");
             if (plan.Warning is { } warning)
             {
@@ -236,10 +236,14 @@ public sealed partial class SpaceManager : BackgroundService
             .ToList();
     }
 
+    /// <summary>The free-space floor: the setting, or with 0 (automatic) a tenth of the drive, between 10 and 100 GB.</summary>
+    internal static long KeepFreeBytes(PluginConfiguration cfg, long driveBytes) =>
+        cfg.KeepFreeGb > 0 ? cfg.KeepFreeGb * Gb : Math.Clamp(driveBytes / 10, 10 * Gb, 100 * Gb);
+
     private SpacePlan BuildPlan(PluginConfiguration cfg)
     {
         var roots = ManagedRoots();
-        var plan = new SpacePlan { KeepFreeBytes = cfg.KeepFreeGb * Gb, Mode = cfg.Mode, CreatedUtc = DateTime.UtcNow };
+        var plan = new SpacePlan { KeepFreeBytes = Math.Max(0, cfg.KeepFreeGb) * Gb, Mode = cfg.Mode, CreatedUtc = DateTime.UtcNow };
         if (roots.Count == 0)
         {
             plan.Warning = "No recording folders are set in Live TV settings.";
@@ -254,6 +258,7 @@ public sealed partial class SpaceManager : BackgroundService
         }
 
         (plan.FreeBytes, plan.TotalBytes) = drive.Value;
+        plan.KeepFreeBytes = KeepFreeBytes(cfg, plan.TotalBytes);
         plan.NeededBytes = plan.KeepFreeBytes - plan.FreeBytes;
         plan.Targets = CheckTargets(cfg);
         if (plan.NeededBytes <= 0)

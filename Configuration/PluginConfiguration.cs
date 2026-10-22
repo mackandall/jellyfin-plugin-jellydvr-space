@@ -93,8 +93,11 @@ public class PluginConfiguration : BasePluginConfiguration
     /// <summary>"preview": only show what would happen. "active": actually move/delete.</summary>
     public string Mode { get; set; } = ModePreview;
 
-    /// <summary>Keep at least this much free on the recordings drive (GB).</summary>
-    public int KeepFreeGb { get; set; } = 100;
+    /// <summary>
+    /// Keep at least this much free on the recordings drive (GB). 0 is automatic: a tenth of the drive,
+    /// between 10 and 100 GB.
+    /// </summary>
+    public int KeepFreeGb { get; set; }
 
     /// <summary>How often to check (minutes); it also checks right after a recording finishes.</summary>
     public int CheckIntervalMinutes { get; set; } = 15;

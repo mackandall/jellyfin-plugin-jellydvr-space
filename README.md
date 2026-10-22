@@ -12,8 +12,8 @@ archives elsewhere are never touched.
 ## Settings (Dashboard → Plugins → JellyDVR Space)
 
 - **Space manager** — *Preview* (default): shows what it would do, nothing happens. *Active*: does it.
-- **Keep at least** N GB free on the recordings drive (default 100). Checked every 15 minutes and two
-  minutes after each recording finishes.
+- **Keep at least** N GB free on the recordings drive (default automatic: a tenth of the drive, between 10
+  and 100 GB). Checked every 15 minutes and two minutes after each recording finishes.
 - **To make room** — move to archive storage (default), delete, or move unwatched / delete watched.
 - **Which recordings go first** — watched then oldest (default), oldest first, or movies first.
 - **Archive storage** — an ordered list of folders, each for TV, Movies, Sports or both, with its own
