@@ -109,7 +109,7 @@
                         recordings would disappear from Jellyfin. Recordings keep their show / season folders below it.
                     </div>
                     <div id="DsTargets"></div>
-                    <button is="emby-button" type="button" id="DsAddTarget" class="emby-button">
+                    <button is="emby-button" type="button" id="DsAddTarget" class="raised emby-button">
                         <span>+ Add location</span>
                     </button>
                     <div class="inputContainer" style="margin-top:1.2em;">
@@ -141,7 +141,7 @@
                     </div>
 
                     <div id="DsRules"></div>
-                    <button is="emby-button" type="button" id="DsAddRule" class="emby-button">
+                    <button is="emby-button" type="button" id="DsAddRule" class="raised emby-button">
                         <span>+ Add rule</span>
                     </button>
 
@@ -221,9 +221,9 @@
                         }).join('') + '</select>' +
                         '<label style="opacity:.8;">keep free</label>' +
                         '<input is="emby-input" type="number" min="0" data-f="KeepFreeGb" style="width:6em;" value="' + esc(t.KeepFreeGb) + '"><span>GB</span>' +
-                        '<button is="emby-button" type="button" class="emby-button" data-a="up" title="Move up">▲</button>' +
-                        '<button is="emby-button" type="button" class="emby-button" data-a="down" title="Move down">▼</button>' +
-                        '<button is="emby-button" type="button" class="emby-button" data-a="remove" title="Remove">✕</button>';
+                        '<button is="emby-button" type="button" class="raised emby-button" data-a="up" title="Move up">▲</button>' +
+                        '<button is="emby-button" type="button" class="raised emby-button" data-a="down" title="Move down">▼</button>' +
+                        '<button is="emby-button" type="button" class="raised emby-button" data-a="remove" title="Remove">✕</button>';
                     row.querySelectorAll("[data-f]").forEach(function (el) {
                         el.addEventListener("change", function () {
                             t[el.getAttribute("data-f")] = el.getAttribute("data-f") === "KeepFreeGb" ? (parseInt(el.value, 10) || 0) : el.value.trim();
@@ -256,9 +256,9 @@
                         '<option value="false"' + (r.RequireAll ? '' : ' selected') + '>any of them</option>' +
                         '<option value="true"' + (r.RequireAll ? ' selected' : '') + '>all of them</option></select>' +
                         '<input is="emby-input" type="text" data-f="Destination" style="flex:1;min-width:14em;" placeholder="(movie recording folder)" value="' + esc(r.Destination) + '">' +
-                        '<button is="emby-button" type="button" class="emby-button" data-a="up" title="Move up">▲</button>' +
-                        '<button is="emby-button" type="button" class="emby-button" data-a="down" title="Move down">▼</button>' +
-                        '<button is="emby-button" type="button" class="emby-button" data-a="remove" title="Remove">✕</button>';
+                        '<button is="emby-button" type="button" class="raised emby-button" data-a="up" title="Move up">▲</button>' +
+                        '<button is="emby-button" type="button" class="raised emby-button" data-a="down" title="Move down">▼</button>' +
+                        '<button is="emby-button" type="button" class="raised emby-button" data-a="remove" title="Remove">✕</button>';
                     row.querySelectorAll("[data-f]").forEach(function (el) {
                         el.addEventListener("change", function () {
                             var f = el.getAttribute("data-f");
@@ -350,7 +350,7 @@
                     tr.style.borderTop = "1px solid rgba(128,128,128,.2)";
                     tr.innerHTML = '<td style="padding:.3em;">' + esc(it.Name) + '</td><td>' + gb(it.Bytes) + '</td><td>' + (it.Watched ? "yes" : "") +
                         '</td><td>' + esc(it.Action) + '</td><td>' + esc(it.Destination || it.Why) + '</td>' +
-                        '<td><button is="emby-button" type="button" class="emby-button" style="padding:.2em .8em;">Keep</button></td>';
+                        '<td><button is="emby-button" type="button" class="raised emby-button" style="padding:.2em .8em;">Keep</button></td>';
                     tr.querySelector("button").addEventListener("click", function () {
                         api("POST", "JellyDvrSpace/Keep/" + it.ItemId).then(run);
                     });
@@ -372,7 +372,7 @@
                 if (!(s.Keep || []).length) { keepHost.textContent = "None."; }
                 (s.Keep || []).forEach(function (k) {
                     var line = document.createElement("div");
-                    line.innerHTML = esc(k.Name) + ' <button is="emby-button" type="button" class="emby-button" style="padding:.1em .6em;">Remove</button>';
+                    line.innerHTML = esc(k.Name) + ' <button is="emby-button" type="button" class="raised emby-button" style="padding:.1em .6em;">Remove</button>';
                     line.querySelector("button").addEventListener("click", function () {
                         api("DELETE", "JellyDvrSpace/Keep/" + k.Id).then(load);
                     });
