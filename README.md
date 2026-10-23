@@ -74,6 +74,38 @@ kept hidden for Undo (14 days by default). Conversions run in the hours you set 
 records, Live TV is watched or a program you list runs (a capture encoder on the same GPU, say). The GPU
 is the QSV device in Jellyfin's Playback settings unless you name another render node.
 
+## Screenshots
+
+From a real server (Jellyfin 12.2, web client with the item-menu script installed).
+
+A recording in the recordings folder: **Move to archive…** in its menu,
+
+![A recording's menu](docs/screenshots/menu-recording.jpg)
+
+which lists the archive locations for its kind, with free space and where it would end up:
+
+![Move to archive](docs/screenshots/move-dialog.jpg)
+
+A show's menu moves all its recordings at once:
+
+![A show's menu](docs/screenshots/menu-show.jpg)
+
+A recording already in an archive (marked "Archived" on Episode History's recordings row) doesn't offer it:
+
+![An archived recording's menu](docs/screenshots/menu-archived.jpg)
+
+Settings (Dashboard → Plugins → JellyDVR Space): the recordings drive, the plan and the space manager,
+
+![Recordings drive and space manager](docs/screenshots/settings-drive.jpg)
+
+archive storage,
+
+![Archive storage](docs/screenshots/settings-archive.jpg)
+
+and sorting by guide category:
+
+![Sort by guide category](docs/screenshots/settings-sorting.jpg)
+
 ## Install
 
 ### From the JellyDVR plugin repository (no build needed)
