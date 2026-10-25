@@ -127,6 +127,8 @@
                         Jellyfin files movies and series in their own folders; everything else (comedy specials, one-off games, …)
                         lands in the general recording folder. Rules here move those by their guide categories, tried in order:
                         the first rule a recording matches decides where it goes. Recordings no rule matches stay put.
+                        Tick "series too" to also take matching recordings out of the series recording folder (games come
+                        with a series id, so Jellyfin files them as series).
                         Empty destination = the movie recording folder. Checked with the space check (every few minutes and
                         after each recording).
                     </div>
@@ -256,13 +258,14 @@
                         '<option value="false"' + (r.RequireAll ? '' : ' selected') + '>any of them</option>' +
                         '<option value="true"' + (r.RequireAll ? ' selected' : '') + '>all of them</option></select>' +
                         '<input is="emby-input" type="text" data-f="Destination" style="flex:1;min-width:14em;" placeholder="(movie recording folder)" value="' + esc(r.Destination) + '">' +
+                        '<label style="display:flex;align-items:center;gap:.3em;" title="Games come with a series id, so Jellyfin files them as series"><input type="checkbox" data-f="IncludeSeries"' + (r.IncludeSeries ? ' checked' : '') + '> series too</label>' +
                         '<button is="emby-button" type="button" class="raised emby-button" data-a="up" title="Move up">▲</button>' +
                         '<button is="emby-button" type="button" class="raised emby-button" data-a="down" title="Move down">▼</button>' +
                         '<button is="emby-button" type="button" class="raised emby-button" data-a="remove" title="Remove">✕</button>';
                     row.querySelectorAll("[data-f]").forEach(function (el) {
                         el.addEventListener("change", function () {
                             var f = el.getAttribute("data-f");
-                            r[f] = f === "Enabled" ? el.checked : f === "RequireAll" ? el.value === "true" : el.value.trim();
+                            r[f] = f === "Enabled" || f === "IncludeSeries" ? el.checked : f === "RequireAll" ? el.value === "true" : el.value.trim();
                         });
                     });
                     row.querySelectorAll("[data-a]").forEach(function (b) {
@@ -443,7 +446,7 @@
                     page.querySelector("#DsSportsCategories").value = config.SportsCategories || "";
                     page.querySelector("#DsSortMode").value = config.SortMode || "preview";
                     rules = (config.CategoryRules || []).map(function (r) {
-                        return { Name: r.Name, Enabled: r.Enabled !== false, Categories: r.Categories, RequireAll: !!r.RequireAll, Destination: r.Destination };
+                        return { Name: r.Name, Enabled: r.Enabled !== false, Categories: r.Categories, RequireAll: !!r.RequireAll, Destination: r.Destination, IncludeSeries: !!r.IncludeSeries };
                     });
                     renderRules();
                     Dashboard.hideLoadingMsg();
@@ -458,7 +461,7 @@
             });
 
             page.querySelector("#DsAddRule").addEventListener("click", function () {
-                rules.push({ Name: "", Enabled: true, Categories: "", RequireAll: false, Destination: "" });
+                rules.push({ Name: "", Enabled: true, Categories: "", RequireAll: false, Destination: "", IncludeSeries: false });
                 renderRules();
             });
 

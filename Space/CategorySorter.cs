@@ -23,7 +23,8 @@ namespace Jellyfin.Plugin.DvrSpace.Space;
 /// Sorts recordings out of the DVR's general recording folder by guide category. Jellyfin only
 /// routes movies and series to their own folders; everything else (specials, one-off games, …)
 /// lands in the general folder. Each rule names guide categories and a destination; the first
-/// rule a recording matches moves it (with its sidecars, same safe copy-then-remove as archive
+/// rule a recording matches moves it. A rule can also take recordings from the series folder
+/// (games have series ids, so they're filed as series) (with its sidecars, same safe copy-then-remove as archive
 /// moves). Categories come from the item's genres and the guide .nfo Jellyfin writes beside it.
 /// </summary>
 public sealed class CategorySorter
@@ -73,35 +74,50 @@ public sealed class CategorySorter
 
         plan.Source = source;
         // Movie and series recordings already have their own folders; leave them alone even
-        // if those folders sit inside the general one.
+        // if those folders sit inside the general one (unless a rule takes series recordings).
         var elsewhere = new[] { Clean(tv.MovieRecordingPath), Clean(tv.SeriesRecordingPath) }
             .OfType<string>()
             .Where(p => p != source)
             .ToList();
-        plan.Rules = CheckRules(cfg, tv, source);
+        var series = Clean(tv.SeriesRecordingPath) is { } sp && sp != source ? sp : null;
+        plan.Rules = CheckRules(cfg, tv, source, series);
+        var fromSeries = series is not null && plan.Rules.Any(r => r.Enabled && r.IncludeSeries);
 
         var keep = new HashSet<string>(cfg.KeepItemIds ?? Array.Empty<string>(), StringComparer.OrdinalIgnoreCase);
         var playing = _sessionManager.Sessions.Select(s => s.NowPlayingItem?.Id).OfType<Guid>().ToHashSet();
         var recordings = _serviceProvider.GetService<IRecordingsManager>();
 
+        // Each recording with the folder it's sorted from (its sub-folders are kept below the destination).
         var items = _libraryManager.GetItemList(new InternalItemsQuery
             {
-                IncludeItemTypes = new[] { BaseItemKind.Movie, BaseItemKind.Video },
+                IncludeItemTypes = fromSeries
+                    ? new[] { BaseItemKind.Movie, BaseItemKind.Video, BaseItemKind.Episode }
+                    : new[] { BaseItemKind.Movie, BaseItemKind.Video },
                 IsVirtualItem = false,
                 Recursive = true
             })
-            .Where(i => i.Path is { } p && IsUnder(p, source) && !elsewhere.Any(e => IsUnder(p, e)))
-            .GroupBy(i => i.Path) // the same file can appear in more than one library
+            .Select(i => (Item: i, From: i.Path is not { } p ? null
+                : IsUnder(p, source) && !elsewhere.Any(e => IsUnder(p, e)) ? source
+                : fromSeries && IsUnder(p, series!) ? series
+                : null))
+            .Where(x => x.From is not null)
+            .GroupBy(x => x.Item.Path) // the same file can appear in more than one library
             .Select(g => g.First())
-            .OrderBy(i => i.DateCreated);
+            .OrderBy(x => x.Item.DateCreated);
 
-        foreach (var item in items.Where(i => !SpaceManager.IsLiveBuffer(i))) // buffers stay put until kept
+        foreach (var (item, from) in items.Where(x => !SpaceManager.IsLiveBuffer(x.Item))) // buffers stay put until kept
         {
             var categories = Categories(item);
-            var rule = plan.Rules.FirstOrDefault(r => r.Enabled && r.Matches(categories));
+            var isSeries = from == series;
+            var rule = plan.Rules.FirstOrDefault(r => r.Enabled && (!isSeries || r.IncludeSeries) && r.Matches(categories));
             if (rule is null)
             {
-                plan.Unmatched++;
+                // Series recordings no rule takes are where they belong; only the general folder's count.
+                if (!isSeries)
+                {
+                    plan.Unmatched++;
+                }
+
                 continue;
             }
 
@@ -111,6 +127,7 @@ public sealed class CategorySorter
                 ItemId = item.Id,
                 Name = item.Name,
                 Path = path,
+                Source = from!,
                 Rule = rule.Name,
                 Categories = string.Join(", ", categories)
             };
@@ -127,7 +144,7 @@ public sealed class CategorySorter
                 continue;
             }
 
-            entry.Destination = Path.GetFullPath(Path.Combine(rule.Destination, Path.GetRelativePath(source, Path.GetDirectoryName(path)!)));
+            entry.Destination = Path.GetFullPath(Path.Combine(rule.Destination, Path.GetRelativePath(from!, Path.GetDirectoryName(path)!)));
             if (File.Exists(Path.Combine(entry.Destination, Path.GetFileName(path))))
             {
                 // A move would refuse to overwrite it; say so once instead of failing every run.
@@ -169,7 +186,7 @@ public sealed class CategorySorter
             };
             try
             {
-                MoveRecording(item.Path, plan.Source, dest, _libraryMonitor, _logger);
+                MoveRecording(item.Path, item.Source, dest, _libraryMonitor, _logger);
                 record.Ok = true;
                 _logger.LogInformation("Sorted {Name} ({Rule}) to {Dest}", item.Name, item.Rule, dest);
             }
@@ -185,7 +202,7 @@ public sealed class CategorySorter
         return done;
     }
 
-    private List<RuleStatus> CheckRules(PluginConfiguration cfg, LiveTvOptions tv, string source)
+    private List<RuleStatus> CheckRules(PluginConfiguration cfg, LiveTvOptions tv, string source, string? series)
     {
         var libraryPaths = _libraryManager.GetVirtualFolders()
             .SelectMany(f => f.Locations ?? Array.Empty<string>())
@@ -200,6 +217,7 @@ public sealed class CategorySorter
                 Name = string.IsNullOrWhiteSpace(r.Name) ? "(unnamed)" : r.Name.Trim(),
                 Enabled = r.Enabled,
                 RequireAll = r.RequireAll,
+                IncludeSeries = r.IncludeSeries,
                 Categories = (r.Categories ?? string.Empty)
                     .Split(new[] { ',', '\n', ';' }, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
                     .ToList(),
@@ -208,6 +226,7 @@ public sealed class CategorySorter
             status.Problem = status.Categories.Count == 0 ? "no categories listed"
                 : dest is null ? "no destination (and no movie recording folder in Live TV settings)"
                 : dest == source || IsUnder(dest, source) ? "destination is inside the recording folder it sorts from"
+                : r.IncludeSeries && series is not null && (dest == series || IsUnder(dest, series)) ? "destination is inside the series recording folder it sorts from"
                 : !Directory.Exists(dest) ? "destination folder not found"
                 : !libraryPaths.Any(l => dest == l || IsUnder(dest, l)) ? "destination is not inside any library (sorted recordings would disappear from Jellyfin)"
                 : null;
@@ -251,6 +270,8 @@ public sealed class CategorySorter
 
         public bool RequireAll { get; set; }
 
+        public bool IncludeSeries { get; set; }
+
         public List<string> Categories { get; set; } = new();
 
         public string Destination { get; set; } = string.Empty;
@@ -271,6 +292,9 @@ public sealed class CategorySorter
         public string Name { get; set; } = string.Empty;
 
         public string Path { get; set; } = string.Empty;
+
+        /// <summary>The recording folder it's sorted from (general or series).</summary>
+        public string Source { get; set; } = string.Empty;
 
         public string Rule { get; set; } = string.Empty;
 

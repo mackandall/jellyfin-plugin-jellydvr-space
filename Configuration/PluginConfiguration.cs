@@ -37,6 +37,12 @@ public class CategoryRule
 
     /// <summary>Folder to move into, inside a library. Empty: Live TV's movie recording folder.</summary>
     public string Destination { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Also sort recordings out of the series recording folder (games come with a series id, so
+    /// Jellyfin files them as series). Off: only the general recording folder.
+    /// </summary>
+    public bool IncludeSeries { get; set; }
 }
 
 /// <summary>
@@ -168,7 +174,7 @@ public class PluginConfiguration : BasePluginConfiguration
     public CategoryRule[] CategoryRules { get; set; } =
     {
         new() { Name = "Comedy specials", Categories = "Special, Comedy", RequireAll = true },
-        new() { Name = "Sports", Enabled = false, Categories = "Sports, Sports event, Sporting event" }
+        new() { Name = "Sports", Enabled = false, Categories = "Sports, Sports event, Sporting event", IncludeSeries = true }
     };
 
     /// <summary>Rights of the JDVR clients set on the settings page, one per device.</summary>
