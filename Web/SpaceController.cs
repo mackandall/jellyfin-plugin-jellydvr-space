@@ -96,6 +96,10 @@ public sealed class SpaceController : ControllerBase
     public IActionResult ShowStorage([FromRoute] Guid itemId) =>
         _libraryManager.GetItemById(itemId) is { } item ? Ok(_manager.GetShowStorage(item)) : NotFound();
 
+    /// <summary>The same, by the show's name (a series recording's options).</summary>
+    [HttpGet("ShowStorage")]
+    public IActionResult ShowStorageByName([FromQuery] string show) => Ok(_manager.GetShowStorage(show ?? string.Empty));
+
     /// <summary>Saves a show's storage folders, in order (none: it stays on the recording drive).</summary>
     [HttpPost("ShowStorage")]
     public IActionResult SetShowStorage([FromBody] ShowStorageRequest request)

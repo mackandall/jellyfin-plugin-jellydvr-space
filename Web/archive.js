@@ -427,16 +427,34 @@
 
   // ---- Store in… ----------------------------------------------------------------------------
 
-  // The guide programme whose popup is opening (the popup doesn't name it in its markup).
-  var programId = null;
-  var programClickedAt = 0;
-  document.addEventListener('click', function (e) {
-    var cell = e.target && e.target.closest && e.target.closest('.programCell[data-id]');
-    if (cell) {
-      programId = cell.getAttribute('data-id');
-      programClickedAt = Date.now();
+  // Jellyfin's Recording options / Series options dialogs don't name their timer in the markup:
+  // remember the timer each one just loaded.
+  var lastTimer = null;
+  var lastSeriesTimer = null;
+  var realFetch = window.fetch;
+  window.fetch = function (input, init) {
+    var promise = realFetch.apply(this, arguments);
+    var url = typeof input === 'string' ? input : (input && input.url) || '';
+    var method = ((init && init.method) || (input && input.method) || 'GET').toUpperCase();
+    var m = method === 'GET' && /\/LiveTv\/(Series)?Timers\/([0-9a-f-]{32,36})(\?|$)/i.exec(url);
+    if (m) {
+      var series = !!m[1];
+      promise.then(function (r) {
+        if (r.ok) {
+          r.clone().json().then(function (t) {
+            var seen = { timer: t, at: Date.now() };
+            if (series) {
+              lastSeriesTimer = seen;
+            } else {
+              lastTimer = seen;
+            }
+            checkOptionDialogs(document);
+          }).catch(function () {});
+        }
+      }).catch(function () {});
     }
-  }, true);
+    return promise;
+  };
 
   function detailsId() {
     var hash = window.location.hash || '';
@@ -449,6 +467,15 @@
     return apiClient.ajax({
       type: 'GET',
       url: apiClient.getUrl('JellyDvrSpace/ShowStorage/' + itemId),
+      dataType: 'json'
+    }).catch(function () { return null; });
+  }
+
+  function getShowStorage(show) {
+    var apiClient = window.ApiClient;
+    return apiClient.ajax({
+      type: 'GET',
+      url: apiClient.getUrl('JellyDvrSpace/ShowStorage', { show: show }),
       dataType: 'json'
     }).catch(function () { return null; });
   }
@@ -476,7 +503,8 @@
     return storage && !storage.Problem && storage.Folders && storage.Folders.length;
   }
 
-  function showStorePicker(itemId, storage, onSaved) {
+  // oneOnly: from Recording options, so only this recording's choice (no switch to the whole show).
+  function showStorePicker(itemId, storage, onSaved, oneOnly) {
     // Above jellyfin-web's own dialogs (the guide's programme popup is 999999).
     var overlay = el('div', 'position:fixed;inset:0;z-index:1000001;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;padding:16px;');
     var box = el('div', 'background:#202020;color:#fff;border-radius:10px;max-width:780px;width:100%;max-height:85vh;overflow:auto;padding:1.2em 1.4em;box-shadow:0 8px 40px rgba(0,0,0,.6);font-size:95%;');
@@ -557,7 +585,7 @@
     function render() {
       box.innerHTML = '';
       box.appendChild(el('h2', 'margin:0 0 .5em;font-size:1.3em;font-weight:500;', state.one ? 'Store this recording in' : 'Store this show in'));
-      if (own) {
+      if (own && !oneOnly) {
         // Two solid buttons, the one in use filled blue.
         var tabs = el('div', 'display:flex;gap:.6em;flex-wrap:wrap;margin-bottom:.8em;');
         [[true, 'This recording'], [false, 'Every ' + storage.Show + ' recording']].forEach(function (t) {
@@ -667,61 +695,103 @@
     document.body.appendChild(overlay);
   }
 
-  // A row under Record / Record series, built like theirs.
-  function injectStoreRow(fields, itemId) {
-    if (fields.querySelector('.jdvrspace-store')) {
-      return;
+  // Recording options: where this one recording goes.
+  function oneSummary(storage) {
+    var own = storage.Recording;
+    var showWhere = storage.Locations.map(function (p) { return labelOf(storage, p); }).join(', then ') || 'the recording drive';
+    if (own && own.Mode === 'drive') {
+      return ['The recording drive', 'this recording only · the show\'s setting is ' + showWhere];
     }
-    checkIsAdmin().then(function (admin) {
-      return admin ? getStorage(itemId) : null;
-    }).then(function (storage) {
-      if (!usableStorage(storage) || fields.querySelector('.jdvrspace-store')) {
+    if (own && own.Mode === 'folders') {
+      return [own.Locations.map(function (p) { return labelOf(storage, p); }).join(', then '), 'this recording only · the show\'s setting is ' + showWhere];
+    }
+    return ['The show\'s setting · ' + showWhere, 'Change… to store just this recording somewhere else'];
+  }
+
+  // Series options: where every recording of the show goes.
+  function showSummary(storage) {
+    var where = storage.Locations.map(function (p) { return labelOf(storage, p); }).join(', then ');
+    return [where || 'The recording drive', 'every ' + storage.Show + ' recording · airings with their own choice keep it'];
+  }
+
+  // A "Store in" row above the dialog's footer, built like its other fields.
+  function injectOptionsRow(form, load, summary, pick) {
+    load().then(function (storage) {
+      if (!usableStorage(storage) || form.querySelector('.jdvrspace-store-row')) {
         return;
       }
-      var row = el('div', '');
-      row.className = 'recordingFields-buttons flex align-items-center jdvrspace-store';
-      var holder = el('div', '');
+      var row = el('div', 'margin:1.2em 0 .4em;');
+      row.className = 'inputContainer jdvrspace-store-row';
+      var label = el('div', 'margin-bottom:.4em;', 'Store in');
+      label.className = 'inputLabel';
+      label.appendChild(el('span', 'opacity:.6;font-size:85%;margin-left:.5em;', '· JellyDVR Space'));
+      row.appendChild(label);
+      var line = el('div', 'display:flex;align-items:center;gap:1em;');
+      var text = el('div', 'flex-grow:1;min-width:0;');
+      var where = el('div', '');
+      var note = el('div', 'margin-top:.2em;');
+      note.className = 'fieldDescription';
+      text.appendChild(where);
+      text.appendChild(note);
+      line.appendChild(text);
       var b = document.createElement('button');
       b.setAttribute('is', 'emby-button');
       b.type = 'button';
-      b.className = 'raised recordingButton emby-button';
-      var icon = el('span', '');
-      icon.className = 'material-icons recordingIcon folder_open';
-      icon.setAttribute('aria-hidden', 'true');
-      var text = el('span', '', 'Store in…');
-      text.className = 'buttonText';
-      b.appendChild(icon);
-      b.appendChild(text);
-      holder.appendChild(b);
-      row.appendChild(holder);
-      var where = el('span', 'margin-left:.8em;', '');
-      where.className = 'secondaryText';
-      row.appendChild(where);
+      b.className = 'raised emby-button';
+      b.style.margin = '0';
+      b.appendChild(el('span', '', 'Change…'));
+      line.appendChild(b);
+      row.appendChild(line);
       function show(s) {
-        storage = s || storage;
-        where.textContent = storeSummary(storage);
+        var t = summary(s);
+        where.textContent = t[0];
+        note.textContent = t[1];
       }
       show(storage);
       b.addEventListener('click', function (e) {
         e.preventDefault();
-        getStorage(itemId).then(function (fresh) {
-          showStorePicker(itemId, usableStorage(fresh) ? fresh : storage, function () { getStorage(itemId).then(show); });
+        load().then(function (fresh) {
+          pick(usableStorage(fresh) ? fresh : storage, function () { load().then(function (s) { if (usableStorage(s)) { show(s); } }); });
         });
       });
-      fields.appendChild(row);
+      var footer = form.querySelector('.formDialogFooter');
+      var before = footer && footer.previousElementSibling && footer.previousElementSibling.tagName === 'BR' ? footer.previousElementSibling : footer;
+      form.insertBefore(row, before || null);
     });
   }
 
-  function checkRecordingRows(root) {
-    var rows = root.querySelectorAll ? root.querySelectorAll('.recordingFields > .recordingFields-buttons:last-child') : [];
-    for (var i = 0; i < rows.length; i++) {
-      var fields = rows[i].parentNode;
-      var inDialog = fields.closest('.dialog, .formDialog');
-      var id = inDialog ? (Date.now() - programClickedAt < 15000 ? programId : null) : detailsId();
-      if (id && !fields.getAttribute('data-jdvrspace-for')) {
-        fields.setAttribute('data-jdvrspace-for', id);
-        injectStoreRow(fields, id);
+  function checkOptionDialogs(root) {
+    var forms = root.querySelectorAll ? root.querySelectorAll('.formDialog form') : [];
+    for (var i = 0; i < forms.length; i++) {
+      var form = forms[i];
+      if (form.getAttribute('data-jdvrspace-store') || !form.querySelector('#txtPrePaddingMinutes')) {
+        continue;
       }
+      var series = !!form.querySelector('.selectKeepUpTo');
+      var seen = series ? lastSeriesTimer : lastTimer;
+      if (!seen || Date.now() - seen.at > 20000) {
+        continue;
+      }
+      var t = seen.timer;
+      form.setAttribute('data-jdvrspace-store', t.Id || '1');
+      checkIsAdmin().then((function (form, t, series) {
+        return function (admin) {
+          if (!admin) {
+            return;
+          }
+          if (series) {
+            if (t.Name) {
+              injectOptionsRow(form, function () { return getShowStorage(t.Name); }, showSummary, function (storage, done) {
+                showStorePicker(null, storage, done);
+              });
+            }
+          } else if (t.ProgramId) {
+            injectOptionsRow(form, function () { return getStorage(t.ProgramId); }, oneSummary, function (storage, done) {
+              showStorePicker(t.ProgramId, storage, done, true);
+            });
+          }
+        };
+      })(form, t, series));
     }
   }
 
@@ -790,7 +860,7 @@
         if (scroller) {
           tryInject(scroller);
         }
-        checkRecordingRows(node);
+        checkOptionDialogs(node);
         if (node.querySelector && node.querySelector('.detailSectionContent')) {
           checkDetailsStored();
         }

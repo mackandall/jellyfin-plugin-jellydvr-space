@@ -18,14 +18,18 @@ namespace Jellyfin.Plugin.DvrSpace.Space;
 /// </summary>
 public sealed partial class SpaceManager
 {
-    public ShowStorage GetShowStorage(BaseItem item)
+    public ShowStorage GetShowStorage(BaseItem item) => GetShowStorage(ShowNameOf(item), item);
+
+    /// <summary>A show's storage by its name (a series recording's options), with no one recording of it.</summary>
+    public ShowStorage GetShowStorage(string show) => GetShowStorage(show.Trim().Length > 0 ? show.Trim() : null, null);
+
+    private ShowStorage GetShowStorage(string? show, BaseItem? item)
     {
         var cfg = Config;
-        var show = ShowNameOf(item);
         var result = new ShowStorage { Show = show ?? string.Empty, SortMode = cfg.SortMode };
         if (show is null)
         {
-            result.Problem = "Movies aren't stored by show.";
+            result.Problem = item is null ? "No show given." : "Movies aren't stored by show.";
             return result;
         }
 
@@ -50,14 +54,14 @@ public sealed partial class SpaceManager
             })
             .ToList();
         result.MovesTo = FirstWithRoom(result.Locations, result.Folders);
-        result.Recording = GetRecordingStorage(item, cfg, result.Folders);
+        result.Recording = item is null ? null : GetRecordingStorage(item, cfg, result.Folders);
         if (result.Recording is { Mode: not "show" } own)
         {
             // Its own choice wins over the show's.
             result.MovesTo = own.MovesTo;
         }
 
-        result.OnRecordingDrive = item.Path is { } path && ManagedRoots().Any(r => IsUnder(path, r));
+        result.OnRecordingDrive = item?.Path is { } path && ManagedRoots().Any(r => IsUnder(path, r));
         return result;
     }
 
