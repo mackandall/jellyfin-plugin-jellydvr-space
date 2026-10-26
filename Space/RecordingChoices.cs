@@ -52,7 +52,7 @@ public sealed partial class SpaceManager
         return result;
     }
 
-    /// <summary>Saves one recording's choice: "show" (follow the show), "drive" (stay put) or "folders".</summary>
+    /// <summary>Saves one recording's choice: "show" (use the show's setting), "drive" (stay put) or "folders".</summary>
     public string SetRecordingStorage(BaseItem item, string mode, IReadOnlyList<string> locations)
     {
         if (Plugin.Instance is not { } plugin)
@@ -111,7 +111,7 @@ public sealed partial class SpaceManager
         _logger.LogInformation(
             "Storage for {Title} set to {Choice}",
             target.Title,
-            mode == "folders" ? string.Join(", ", paths) : mode == "drive" ? "the recording drive" : "its show's setting");
+            mode == "folders" ? string.Join(", ", paths) : mode == "drive" ? "the recording drive" : "the show's setting");
 
         // A recording already made can move now.
         if (hadFiles)
@@ -123,7 +123,7 @@ public sealed partial class SpaceManager
         {
             "folders" => $"This recording: stored in {string.Join(", then ", paths.Select(FolderLabel))}.",
             "drive" => "This recording stays on the recording drive.",
-            _ => "This recording follows the show's setting."
+            _ => "This recording uses the show's setting."
         };
         return mode != "folders" || cfg.SortMode == PluginConfiguration.SortActive
             ? said
@@ -280,7 +280,7 @@ public sealed partial class SpaceManager
         /// <summary>A guide programme (the choice waits for the recording) rather than a recording.</summary>
         public bool Upcoming { get; set; }
 
-        /// <summary>"show" (follows the show's setting), "drive" (stays on the recording drive) or "folders".</summary>
+        /// <summary>"show" (uses the show's setting), "drive" (stays on the recording drive) or "folders".</summary>
         public string Mode { get; set; } = "show";
 
         public List<string> Locations { get; set; } = new();

@@ -110,7 +110,7 @@ public sealed class SpaceController : ControllerBase
         }
     }
 
-    /// <summary>Saves one programme's or recording's own folders: Mode "show" (follow the show), "drive" or "folders".</summary>
+    /// <summary>Saves one programme's or recording's own folders: Mode "show" (use the show's setting), "drive" or "folders".</summary>
     [HttpPost("RecordingStorage")]
     public IActionResult SetRecordingStorage([FromBody] RecordingStorageRequest request)
     {

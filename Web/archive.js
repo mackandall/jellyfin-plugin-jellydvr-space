@@ -558,10 +558,13 @@
       box.innerHTML = '';
       box.appendChild(el('h2', 'margin:0 0 .5em;font-size:1.3em;font-weight:500;', state.one ? 'Store this recording in' : 'Store this show in'));
       if (own) {
-        var tabs = el('div', 'display:flex;border-bottom:1px solid rgba(255,255,255,.15);margin-bottom:.7em;');
+        // Two solid buttons, the one in use filled blue.
+        var tabs = el('div', 'display:flex;gap:.6em;flex-wrap:wrap;margin-bottom:.8em;');
         [[true, 'This recording'], [false, 'Every ' + storage.Show + ' recording']].forEach(function (t) {
-          var b = el('button', 'padding:.55em 1.1em;border:0;background:transparent;color:' + (state.one === t[0] ? '#fff' : '#aaa')
-            + ';font:inherit;cursor:pointer;border-bottom:3px solid ' + (state.one === t[0] ? '#00a4dc' : 'transparent') + ';', t[1]);
+          var on = state.one === t[0];
+          var b = el('button', 'padding:.6em 1.3em;border-radius:6px;font:inherit;font-weight:700;cursor:pointer;color:#fff;'
+            + 'background:' + (on ? '#00a4dc' : 'rgba(255,255,255,.12)') + ';border:2px solid ' + (on ? '#00a4dc' : 'rgba(255,255,255,.25)') + ';', t[1]);
+          b.setAttribute('aria-pressed', on ? 'true' : 'false');
           b.type = 'button';
           b.addEventListener('click', function () { switchTo(t[0]); });
           tabs.appendChild(b);
@@ -578,7 +581,7 @@
 
       var caption = state.chosen.length ? 'IN THIS ORDER'
         : !state.one || state.mode === 'drive' ? 'IN THIS ORDER · none: it stays on the recording drive'
-          : 'IN THIS ORDER · none: follows the show (' + (showWhere || 'recording drive') + ')';
+          : 'IN THIS ORDER · none: uses the show\'s setting (' + (showWhere || 'recording drive') + ')';
       box.appendChild(el('div', 'font-size:80%;font-weight:700;letter-spacing:.06em;opacity:.7;margin:.3em 0 .5em;', caption));
       state.chosen.forEach(function (path, i) {
         var f = storage.Folders.filter(function (x) { return x.Path === path; })[0] || { Path: path, Label: path, KeepFreeGb: 0, Problem: 'no longer a storage folder' };
@@ -615,7 +618,7 @@
           bar.appendChild(button('Keep on the recording drive', false, function () { state.chosen = []; state.mode = 'drive'; render(); }));
         }
         if (state.chosen.length || state.mode !== 'show') {
-          bar.appendChild(button('Follow the show', false, function () { state.chosen = []; state.mode = 'show'; render(); }));
+          bar.appendChild(button('Use the show\'s setting', false, function () { state.chosen = []; state.mode = 'show'; render(); }));
         }
       } else if (state.chosen.length) {
         bar.appendChild(button('Keep on the recording drive', false, function () { state.chosen = []; render(); }));
