@@ -104,6 +104,10 @@
     return (bytes / 1073741824).toFixed(bytes >= 100 * 1073741824 ? 0 : 1) + ' GB';
   }
 
+  function size(bytes) {
+    return bytes >= 1024 * 1073741824 ? (bytes / 1024 / 1073741824).toFixed(1) + ' TB' : gb(bytes);
+  }
+
   var KIND_LABELS = { tv: 'TV', movies: 'Movies', sports: 'Sports', both: 'TV and movies' };
 
   // ---- the picker ---------------------------------------------------------------------------
@@ -473,7 +477,8 @@
   }
 
   function showStorePicker(itemId, storage, onSaved) {
-    var overlay = el('div', 'position:fixed;inset:0;z-index:100000;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;padding:16px;');
+    // Above jellyfin-web's own dialogs (the guide's programme popup is 999999).
+    var overlay = el('div', 'position:fixed;inset:0;z-index:1000001;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;padding:16px;');
     var box = el('div', 'background:#202020;color:#fff;border-radius:10px;max-width:780px;width:100%;max-height:85vh;overflow:auto;padding:1.2em 1.4em;box-shadow:0 8px 40px rgba(0,0,0,.6);font-size:95%;');
     overlay.appendChild(box);
     function close() {
@@ -532,7 +537,7 @@
       var space = el('div', '');
       if (f.FreeBytes != null && f.TotalBytes) {
         space.appendChild(spaceBar(f, 0, 'this'));
-        space.appendChild(el('div', 'opacity:.7;font-size:85%;margin-top:.25em;', gb(f.FreeBytes) + ' free of ' + gb(f.TotalBytes)));
+        space.appendChild(el('div', 'opacity:.7;font-size:85%;margin-top:.25em;', size(f.FreeBytes) + ' free of ' + size(f.TotalBytes)));
       }
       row.appendChild(space);
       var acts = el('div', 'display:flex;gap:.35em;justify-content:flex-end;');
