@@ -144,8 +144,18 @@ internal static class RecordingFileOps
     {
         var dir = Path.GetDirectoryName(videoPath)!;
         var baseName = Path.GetFileNameWithoutExtension(videoPath);
-        return Directory.GetFiles(dir)
-            .Where(f => f == videoPath || BelongsTo(Path.GetFileName(f), baseName) || IsHiddenOriginal(Path.GetFileName(f), baseName))
+        var files = Directory.GetFiles(dir);
+        // Another recording whose name starts with this one's ("About Last Night...ts" and
+        // "About Last Night....ts", the piece of a restarted recording) is not a sidecar, and
+        // neither are its own sidecars.
+        var longer = files.Where(f => f != videoPath && IsVideo(f))
+            .Select(Path.GetFileNameWithoutExtension)
+            .Where(n => n!.Length > baseName.Length && BelongsTo(n + ".", baseName))
+            .ToList();
+        return files
+            .Where(f => f == videoPath
+                || (BelongsTo(Path.GetFileName(f), baseName) && !longer.Any(n => BelongsTo(Path.GetFileName(f), n!)))
+                || IsHiddenOriginal(Path.GetFileName(f), baseName))
             .Where(f => !f.EndsWith(".jdvrpart", StringComparison.Ordinal))
             .ToList();
     }

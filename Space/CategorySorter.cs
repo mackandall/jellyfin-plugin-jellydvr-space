@@ -111,6 +111,7 @@ public sealed class CategorySorter
         var keep = new HashSet<string>(cfg.KeepItemIds ?? Array.Empty<string>(), StringComparer.OrdinalIgnoreCase);
         var playing = _sessionManager.Sessions.Select(s => s.NowPlayingItem?.Id).OfType<Guid>().ToHashSet();
         var recordings = _serviceProvider.GetService<IRecordingsManager>();
+        var airing = AiringsInProgress.Read(_config);
 
         // Each recording with the folder it's sorted from (its sub-folders are kept below the destination).
         var items = _libraryManager.GetItemList(new InternalItemsQuery
@@ -142,6 +143,7 @@ public sealed class CategorySorter
                 keep.Contains(item.Id.ToString("N")) ? "marked Keep"
                 : playing.Contains(item.Id) ? "being played"
                 : recordings?.GetActiveRecordingInfo(path) is not null ? "still recording"
+                : airing.Includes(item) ? "its programme is still recording (in another piece)"
                 : IsOpen(path) ? "in use (e.g. commercial detection still reading it); will retry"
                 : null;
 
@@ -257,7 +259,8 @@ public sealed class CategorySorter
                 || _libraryManager.GetItemById(item.ItemId) is not BaseItem current || current.Path != item.Path
                 || _sessionManager.Sessions.Any(s => s.NowPlayingItem?.Id == item.ItemId)
                 || _serviceProvider.GetService<IRecordingsManager>()?.GetActiveRecordingInfo(item.Path) is not null
-                || IsOpen(item.Path))
+                || IsOpen(item.Path)
+                || AiringsInProgress.Read(_config).Includes(current))
             {
                 continue; // changed since planning; the next run looks again
             }

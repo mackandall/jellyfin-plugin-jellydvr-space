@@ -288,6 +288,7 @@ public sealed partial class SpaceManager : BackgroundService
             .OfType<Guid>()
             .ToHashSet();
         var recordings = _serviceProvider.GetService<IRecordingsManager>();
+        var airing = AiringsInProgress.Read(_config);
         var users = _userManager.GetUsers().ToList();
 
         var candidates = _libraryManager.GetItemList(new InternalItemsQuery
@@ -329,6 +330,7 @@ public sealed partial class SpaceManager : BackgroundService
             string? skip = keep.Contains(id) ? "marked Keep"
                 : playing.Contains(c.Item.Id) ? "being played"
                 : recordings?.GetActiveRecordingInfo(c.Item.Path!) is not null ? "still recording"
+                : airing.Includes(c.Item) ? "its programme is still recording (in another piece)"
                 : null;
             if (skip is not null)
             {
