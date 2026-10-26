@@ -296,7 +296,7 @@
     checkIsAdmin().then(function (isAdmin) {
       return isAdmin ? getChoices(itemId) : null;
     }).then(function (choices) {
-      if (!choices || !choices.IsRecording || scroller.querySelector('[data-id^="jdvrspace-"]')) {
+      if (!choices || !choices.IsRecording || scroller.querySelector('[data-id="jdvrspace-archive"], [data-id="jdvrspace-moving"]')) {
         return;
       }
 
