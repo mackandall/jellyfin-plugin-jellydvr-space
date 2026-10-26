@@ -143,7 +143,7 @@ public sealed class CategorySorter
                 keep.Contains(item.Id.ToString("N")) ? "marked Keep"
                 : playing.Contains(item.Id) ? "being played"
                 : recordings?.GetActiveRecordingInfo(path) is not null ? "still recording"
-                : airing.Includes(item) ? "its programme is still recording (in another piece)"
+                : airing.Why(item) is { } waiting ? waiting
                 : IsOpen(path) ? "in use (e.g. commercial detection still reading it); will retry"
                 : null;
 
@@ -260,7 +260,7 @@ public sealed class CategorySorter
                 || _sessionManager.Sessions.Any(s => s.NowPlayingItem?.Id == item.ItemId)
                 || _serviceProvider.GetService<IRecordingsManager>()?.GetActiveRecordingInfo(item.Path) is not null
                 || IsOpen(item.Path)
-                || AiringsInProgress.Read(_config).Includes(current))
+                || AiringsInProgress.Read(_config).Why(current) is not null)
             {
                 continue; // changed since planning; the next run looks again
             }

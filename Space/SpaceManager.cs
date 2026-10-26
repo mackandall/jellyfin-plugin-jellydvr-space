@@ -330,7 +330,7 @@ public sealed partial class SpaceManager : BackgroundService
             string? skip = keep.Contains(id) ? "marked Keep"
                 : playing.Contains(c.Item.Id) ? "being played"
                 : recordings?.GetActiveRecordingInfo(c.Item.Path!) is not null ? "still recording"
-                : airing.Includes(c.Item) ? "its programme is still recording (in another piece)"
+                : airing.Why(c.Item) is { } waiting ? waiting
                 : null;
             if (skip is not null)
             {
