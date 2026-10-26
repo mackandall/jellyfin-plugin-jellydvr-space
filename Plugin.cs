@@ -23,6 +23,43 @@ public class Plugin : BasePlugin<PluginConfiguration>, IHasWebPages
         : base(applicationPaths, xmlSerializer)
     {
         Instance = this;
+        if (MoveShowFloorsToFolders(Configuration))
+        {
+            SaveConfiguration();
+        }
+    }
+
+    /// <summary>
+    /// Floors used to be set per show. Now each storage folder has its own: a show's folder that isn't
+    /// a storage folder yet becomes one (with the show's floor, not used for making room), and the show
+    /// keeps only its list. Returns whether anything changed.
+    /// </summary>
+    internal static bool MoveShowFloorsToFolders(PluginConfiguration cfg)
+    {
+        var changed = false;
+        var targets = new List<ArchiveTarget>(cfg.ArchiveTargets ?? Array.Empty<ArchiveTarget>());
+        foreach (var show in cfg.ShowLocations ?? Array.Empty<ShowLocation>())
+        {
+            if (show.KeepFreeGb <= 0)
+            {
+                continue;
+            }
+
+            foreach (var path in show.Locations ?? Array.Empty<string>())
+            {
+                var clean = path.Trim().TrimEnd('/');
+                if (clean.Length > 0 && !targets.Exists(t => (t.Path ?? string.Empty).Trim().TrimEnd('/') == clean))
+                {
+                    targets.Add(new ArchiveTarget { Path = clean, Kind = "tv", KeepFreeGb = show.KeepFreeGb, MakeRoom = false });
+                }
+            }
+
+            show.KeepFreeGb = 0;
+            changed = true;
+        }
+
+        cfg.ArchiveTargets = targets.ToArray();
+        return changed;
     }
 
     public static Plugin? Instance { get; private set; }

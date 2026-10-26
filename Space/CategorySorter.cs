@@ -164,9 +164,9 @@ public sealed class CategorySorter
                         {
                             notes.Add($"{loc.Path}: a recording with the same name is already there");
                         }
-                        else if (projected.GetValueOrDefault(loc.Path) - bytes < show.KeepFreeGb * SpaceManager.Gb)
+                        else if (projected.GetValueOrDefault(loc.Path) - bytes < loc.KeepFreeGb * SpaceManager.Gb)
                         {
-                            notes.Add($"{loc.Path}: no room (keeping {show.KeepFreeGb} GB free)");
+                            notes.Add($"{loc.Path}: no room (keeping {loc.KeepFreeGb} GB free)");
                         }
                         else
                         {
@@ -325,9 +325,10 @@ public sealed class CategorySorter
                 continue;
             }
 
-            var status = new ShowStatus { Show = s.Show.Trim(), Enabled = s.Enabled, KeepFreeGb = Math.Max(0, s.KeepFreeGb) };
+            var status = new ShowStatus { Show = s.Show.Trim(), Enabled = s.Enabled };
             foreach (var path in (s.Locations ?? Array.Empty<string>()).Select(Clean).OfType<string>())
             {
+                var folder = (cfg.ArchiveTargets ?? Array.Empty<ArchiveTarget>()).FirstOrDefault(t => Clean(t.Path) == path);
                 if (!free.TryGetValue(path, out var space))
                 {
                     // Network shares can hang; only ask each one once a run.
@@ -338,9 +339,11 @@ public sealed class CategorySorter
                 status.Locations.Add(new LocationStatus
                 {
                     Path = path,
+                    KeepFreeGb = Math.Max(0, folder?.KeepFreeGb ?? 0),
                     FreeBytes = space.Value?.Free,
                     TotalBytes = space.Value?.Total,
-                    Problem = path == source || IsUnder(path, source) || IsUnder(source, path) ? "overlaps the recording folder"
+                    Problem = folder is null ? "not in the storage folders list (add it there to give it a floor)"
+                        : path == source || IsUnder(path, source) || IsUnder(source, path) ? "overlaps the recording folder"
                         : series is not null && (path == series || IsUnder(path, series) || IsUnder(series, path)) ? "overlaps the series recording folder"
                         : !s.Enabled ? null
                         : space.Value is null ? (space.Completed ? "not found" : "not responding")
@@ -427,14 +430,15 @@ public sealed class CategorySorter
 
         public bool Enabled { get; set; }
 
-        public int KeepFreeGb { get; set; }
-
         public List<LocationStatus> Locations { get; set; } = new();
     }
 
     public sealed class LocationStatus
     {
         public string Path { get; set; } = string.Empty;
+
+        /// <summary>The storage folder's floor (GB).</summary>
+        public int KeepFreeGb { get; set; }
 
         public long? FreeBytes { get; set; }
 

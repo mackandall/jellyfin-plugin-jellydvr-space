@@ -338,7 +338,7 @@ public sealed partial class SpaceManager : BackgroundService
             }
 
             var target = plan.Targets
-                .Where(t => t.Usable && Accepts(t.Kind, c.Item, c.Kind) && projected[t.Path] - size >= t.KeepFreeGb * Gb)
+                .Where(t => t.Usable && t.MakeRoom && Accepts(t.Kind, c.Item, c.Kind) && projected[t.Path] - size >= t.KeepFreeGb * Gb)
                 .OrderBy(t => t.Kind == c.Kind ? 0 : 1)
                 .FirstOrDefault();
             if (target is not null)
@@ -355,7 +355,7 @@ public sealed partial class SpaceManager : BackgroundService
             }
             else
             {
-                plan.Warning = $"No archive location for {c.Kind} has room (or none is reachable); stopped with " +
+                plan.Warning = $"No storage folder for {c.Kind} that's used for making room has room (or none is reachable); stopped with " +
                     $"{(plan.NeededBytes - freed) / (double)Gb:F0} GB still needed. Add or free an archive location, " +
                     "or choose \"delete\" when archives are full.";
                 break;
@@ -391,6 +391,7 @@ public sealed partial class SpaceManager : BackgroundService
                 Path = path,
                 Kind = (t.Kind ?? "both").ToLowerInvariant(),
                 KeepFreeGb = Math.Max(0, t.KeepFreeGb),
+                MakeRoom = t.MakeRoom,
                 InLibrary = libraryPaths.Any(l => path == l || IsUnder(path, l))
             };
             var free = WithTimeout(() => Directory.Exists(path) ? FreeSpace(path) : null);
@@ -593,6 +594,9 @@ public sealed partial class SpaceManager : BackgroundService
         public string Kind { get; set; } = "both";
 
         public int KeepFreeGb { get; set; }
+
+        /// <summary>The space manager may use it (otherwise only shows and "Move to archive…" do).</summary>
+        public bool MakeRoom { get; set; }
 
         public bool Reachable { get; set; }
 

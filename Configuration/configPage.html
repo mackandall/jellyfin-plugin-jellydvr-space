@@ -9,204 +9,219 @@
      data-role="page"
      class="page type-interior pluginConfigurationPage"
      data-require="emby-input,emby-button,emby-checkbox,emby-select">
+    <style>
+        #DvrSpaceConfigPage [hidden] { display: none !important; }
+        #DvrSpaceConfigPage .ds-header { display: flex; align-items: center; gap: .7em; flex-wrap: wrap; margin-bottom: .8em; }
+        #DvrSpaceConfigPage .ds-header h1 { margin: 0; font-size: 1.9em; font-weight: 700; }
+        #DvrSpaceConfigPage .ds-badge { font-size: .8em; padding: .3em .8em; border-radius: 999px; border: 1px solid rgba(255,255,255,.18); opacity: .95; }
+        #DvrSpaceConfigPage .ds-badge.ds-on { color: #22c55e; border-color: rgba(34,197,94,.45); }
+        #DvrSpaceConfigPage .ds-badge.ds-preview { color: #f5b544; border-color: rgba(245,181,68,.45); }
+        #DvrSpaceConfigPage .ds-jump { display: flex; gap: .5em; flex-wrap: wrap; padding: .7em 0; margin-bottom: 1.6em; border-top: 1px solid rgba(255,255,255,.1); border-bottom: 1px solid rgba(255,255,255,.1); }
+        #DvrSpaceConfigPage .ds-jump button { margin: 0; font-size: .85em; padding: .4em .9em; border-radius: 999px; }
+        #DvrSpaceConfigPage .ds-section { margin-bottom: 2.4em; scroll-margin-top: 5em; }
+        #DvrSpaceConfigPage .ds-head { display: flex; align-items: center; gap: .8em; flex-wrap: wrap; border-bottom: 2px solid #00a4dc; padding-bottom: .45em; margin-bottom: .9em; }
+        #DvrSpaceConfigPage .ds-num { background: #00a4dc; color: #06121a; font-weight: 700; border-radius: 6px; width: 1.75em; height: 1.75em; display: flex; align-items: center; justify-content: center; flex: none; }
+        #DvrSpaceConfigPage .ds-head h2 { margin: 0; font-size: 1.5em; font-weight: 700; }
+        #DvrSpaceConfigPage .ds-sum { margin-left: auto; font-size: .9em; opacity: .75; }
+        #DvrSpaceConfigPage .ds-sub { font-size: 1.1em; font-weight: 700; margin: 1.4em 0 .6em; text-decoration: underline; text-decoration-color: #00a4dc; text-decoration-thickness: 2px; text-underline-offset: .35em; }
+        #DvrSpaceConfigPage .ds-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(20em, 1fr)); gap: 0 1.6em; }
+        #DvrSpaceConfigPage .ds-card { background: rgba(255,255,255,.05); border-radius: 8px; padding: .9em 1.1em; margin-bottom: .8em; }
+        #DvrSpaceConfigPage .ds-row { display: flex; gap: .5em; align-items: center; flex-wrap: wrap; }
+        #DvrSpaceConfigPage .ds-row + .ds-row { margin-top: .5em; }
+        #DvrSpaceConfigPage .ds-row button { margin: 0; }
+        #DvrSpaceConfigPage .ds-note { font-size: .88em; opacity: .75; }
+        #DvrSpaceConfigPage .ds-warn { color: #f5b544; }
+        #DvrSpaceConfigPage .ds-check { display: flex; align-items: center; gap: .4em; cursor: pointer; }
+        #DvrSpaceConfigPage .ds-check input { width: 1.15em; height: 1.15em; accent-color: #00a4dc; margin: 0; }
+        #DvrSpaceConfigPage .ds-save { position: sticky; bottom: 0; z-index: 5; display: flex; align-items: center; gap: 1em; padding: .8em 0; margin-bottom: 2em; background: var(--jf-palette-background-default, #101010); border-top: 1px solid rgba(255,255,255,.12); }
+        #DvrSpaceConfigPage .ds-save button { margin: 0 0 0 auto; width: auto; min-width: 10em; }
+        #DvrSpaceConfigPage table { width: 100%; border-collapse: collapse; font-size: .9em; }
+        #DvrSpaceConfigPage th { text-align: left; opacity: .7; padding: .3em; font-weight: 600; }
+        /* Jellyfin's theme forces white-space on .fieldDescription: these list one item a line. */
+        #DvrSpaceConfigPage #DsWarning, #DvrSpaceConfigPage #DsSkipped, #DvrSpaceConfigPage #DsSortWarning,
+        #DvrSpaceConfigPage #DsSortNote, #DvrSpaceConfigPage #DsRecent, #DvrSpaceConfigPage #DsKeepList { white-space: pre-line !important; }
+    </style>
     <div data-role="content">
         <div class="content-primary">
 
-            <div class="fieldDescription" style="margin-bottom:1em;">
-                <a is="emby-linkbutton" class="button-link" href="#/configurationpage?name=JellyDvrConvert">Convert to HEVC →</a>
-                (heavy H.264 movie captures, re-encoded on an Intel GPU)
+            <div class="ds-header">
+                <h1>JellyDVR Space</h1>
+                <span id="DsBadgeSpace" class="ds-badge">Space manager</span>
+                <span id="DsBadgeSort" class="ds-badge">Sorting</span>
+                <a is="emby-linkbutton" class="button-link" style="margin-left:auto;" href="#/configurationpage?name=JellyDvrConvert">Convert to HEVC →</a>
             </div>
+            <nav class="ds-jump" aria-label="Sections">
+                <button is="emby-button" type="button" class="raised" data-jump="DsSecDrive">1 Drive</button>
+                <button is="emby-button" type="button" class="raised" data-jump="DsSecSpace">2 Space manager</button>
+                <button is="emby-button" type="button" class="raised" data-jump="DsSecStorage">3 Storage folders</button>
+                <button is="emby-button" type="button" class="raised" data-jump="DsSecShows">4 Shows</button>
+                <button is="emby-button" type="button" class="raised" data-jump="DsSecCats">5 Category rules</button>
+                <button is="emby-button" type="button" class="raised" data-jump="DsSecDevices">6 JDVR devices</button>
+                <button is="emby-button" type="button" class="raised" data-jump="DsSecActivity">7 Activity</button>
+            </nav>
 
-            <div class="verticalSection">
-                <h2>Recordings drive</h2>
+            <section id="DsSecDrive" class="ds-section">
+                <div class="ds-head"><span class="ds-num">1</span><h2>Recordings drive</h2><span id="DsSumDrive" class="ds-sum"></span></div>
                 <div id="DsDrive" class="fieldDescription">Loading…</div>
-                <div style="height:14px;border-radius:7px;background:rgba(128,128,128,.25);overflow:hidden;margin:.6em 0 .4em;">
+                <div style="height:16px;border-radius:8px;background:rgba(128,128,128,.25);overflow:hidden;margin:.6em 0 .4em;">
                     <div id="DsBar" style="height:100%;width:0;background:#15803d;"></div>
                 </div>
-                <div id="DsWarning" class="fieldDescription" style="color:#f59e0b;white-space:pre-line;"></div>
-                <button is="emby-button" type="button" id="DsRun" class="raised emby-button" style="margin-top:.6em;">
-                    <span>Check now</span>
-                </button>
-                <span id="DsRunResult" class="fieldDescription" style="margin-left:1em;"></span>
-            </div>
-
-            <div class="verticalSection">
-                <h2 id="DsPlanTitle">Plan</h2>
-                <div class="fieldDescription" id="DsPlanNote"></div>
-                <table style="width:100%;border-collapse:collapse;font-size:.9em;">
-                    <thead><tr style="text-align:left;opacity:.7;">
-                        <th style="padding:.3em;">Recording</th><th>Size</th><th>Watched</th><th>Action</th><th>Where</th><th></th>
-                    </tr></thead>
-                    <tbody id="DsPlan"></tbody>
-                </table>
-                <div id="DsSkipped" class="fieldDescription" style="margin-top:.6em;white-space:pre-line;"></div>
-            </div>
-
-            <form id="DvrSpaceConfigForm">
-                <div class="verticalSection">
-                    <h2>Space manager</h2>
-
-                    <div class="selectContainer">
-                        <label class="selectLabel" for="DsMode">Space manager</label>
-                        <select is="emby-select" id="DsMode" class="emby-select-withcolor emby-select">
-                            <option value="preview">Preview: only show what would be moved / deleted to free space</option>
-                            <option value="active">Active: move / delete for real to free space</option>
-                        </select>
-                        <div class="fieldDescription">Frees room on the recordings drive. Category sorting has its own switch below.</div>
-                    </div>
-
-                    <div class="inputContainer">
-                        <label class="inputLabel inputLabelUnfocused" for="DsKeepFree">Keep at least this much free on the recordings drive (GB)</label>
-                        <input id="DsKeepFree" type="number" min="0" is="emby-input" />
-                        <div class="fieldDescription">0 = automatic: a tenth of the drive, between 10 and 100 GB.</div>
-                    </div>
-
-                    <div class="inputContainer">
-                        <label class="inputLabel inputLabelUnfocused" for="DsInterval">Check every (minutes)</label>
-                        <input id="DsInterval" type="number" min="1" max="1440" is="emby-input" />
-                        <div class="fieldDescription">It also checks two minutes after each recording finishes.</div>
-                    </div>
-
-                    <div class="inputContainer">
-                        <label class="inputLabel inputLabelUnfocused" for="DsTranscodeSweep">Delete leftover playback copies after (hours)</label>
-                        <input id="DsTranscodeSweep" type="number" min="0" max="168" is="emby-input" />
-                        <div class="fieldDescription">Copies Jellyfin makes in its transcode folder for playback, when no one is playing them and nothing has written them for this long. A player that closes without saying so leaves a whole movie there, on the server's system drive. 0 leaves them to Jellyfin's daily clean-up.</div>
-                    </div>
-
-                    <div class="selectContainer">
-                        <label class="selectLabel" for="DsAction">To make room</label>
-                        <select is="emby-select" id="DsAction" class="emby-select-withcolor emby-select">
-                            <option value="move">Move recordings to archive storage</option>
-                            <option value="delete">Delete recordings</option>
-                            <option value="move-unwatched-delete-watched">Move unwatched, delete watched</option>
-                        </select>
-                    </div>
-
-                    <div class="selectContainer">
-                        <label class="selectLabel" for="DsOrder">Which recordings go first</label>
-                        <select is="emby-select" id="DsOrder" class="emby-select-withcolor emby-select">
-                            <option value="watched-then-oldest">Watched first, then oldest</option>
-                            <option value="oldest">Oldest first</option>
-                            <option value="movies-first">Movies first, then TV (oldest first)</option>
-                        </select>
-                        <div class="fieldDescription">Never touched: recordings marked Keep, anything still recording, anything being played.</div>
-                    </div>
-
-                    <div class="selectContainer">
-                        <label class="selectLabel" for="DsWhenFull">When every archive location is full or unreachable</label>
-                        <select is="emby-select" id="DsWhenFull" class="emby-select-withcolor emby-select">
-                            <option value="stop">Stop and warn</option>
-                            <option value="delete">Delete instead</option>
-                        </select>
-                    </div>
+                <div id="DsWarning" class="fieldDescription ds-warn"></div>
+                <div class="ds-row" style="margin-top:.6em;">
+                    <button is="emby-button" type="button" id="DsRun" class="raised emby-button"><span>Check now</span></button>
+                    <span id="DsRunResult" class="fieldDescription"></span>
                 </div>
 
-                <div class="verticalSection">
-                    <h2>Archive storage</h2>
+                <div id="DsPlanTitle" class="ds-sub">Plan</div>
+                <div class="fieldDescription" id="DsPlanNote"></div>
+                <table>
+                    <thead><tr><th>Recording</th><th>Size</th><th>Watched</th><th>Action</th><th>Where</th><th></th></tr></thead>
+                    <tbody id="DsPlan"></tbody>
+                </table>
+                <div id="DsSkipped" class="fieldDescription" style="margin-top:.6em;"></div>
+            </section>
+
+            <form id="DvrSpaceConfigForm">
+                <section id="DsSecSpace" class="ds-section">
+                    <div class="ds-head"><span class="ds-num">2</span><h2>Space manager</h2><span class="ds-sum">frees room when the recordings drive runs low</span></div>
+                    <div class="ds-grid">
+                        <div class="selectContainer">
+                            <label class="selectLabel" for="DsMode">Mode</label>
+                            <select is="emby-select" id="DsMode" class="emby-select-withcolor emby-select">
+                                <option value="preview">Preview: only show what would be moved / deleted</option>
+                                <option value="active">Active: move / delete for real</option>
+                            </select>
+                        </div>
+                        <div class="inputContainer">
+                            <label class="inputLabel inputLabelUnfocused" for="DsKeepFree">Keep free on the recordings drive (GB)</label>
+                            <input id="DsKeepFree" type="number" min="0" is="emby-input" />
+                            <div class="fieldDescription">0 = automatic: a tenth of the drive, between 10 and 100 GB.</div>
+                        </div>
+                        <div class="selectContainer">
+                            <label class="selectLabel" for="DsAction">To make room</label>
+                            <select is="emby-select" id="DsAction" class="emby-select-withcolor emby-select">
+                                <option value="move">Move recordings to storage folders</option>
+                                <option value="delete">Delete recordings</option>
+                                <option value="move-unwatched-delete-watched">Move unwatched, delete watched</option>
+                            </select>
+                        </div>
+                        <div class="selectContainer">
+                            <label class="selectLabel" for="DsOrder">Which recordings go first</label>
+                            <select is="emby-select" id="DsOrder" class="emby-select-withcolor emby-select">
+                                <option value="watched-then-oldest">Watched first, then oldest</option>
+                                <option value="oldest">Oldest first</option>
+                                <option value="movies-first">Movies first, then TV (oldest first)</option>
+                            </select>
+                            <div class="fieldDescription">Never touched: recordings marked Keep, anything still recording or being played.</div>
+                        </div>
+                        <div class="selectContainer">
+                            <label class="selectLabel" for="DsWhenFull">When every storage folder is full or unreachable</label>
+                            <select is="emby-select" id="DsWhenFull" class="emby-select-withcolor emby-select">
+                                <option value="stop">Stop and warn</option>
+                                <option value="delete">Delete instead</option>
+                            </select>
+                        </div>
+                        <div class="inputContainer">
+                            <label class="inputLabel inputLabelUnfocused" for="DsInterval">Check every (minutes)</label>
+                            <input id="DsInterval" type="number" min="1" max="1440" is="emby-input" />
+                            <div class="fieldDescription">Also two minutes after each recording finishes.</div>
+                        </div>
+                        <div class="inputContainer">
+                            <label class="inputLabel inputLabelUnfocused" for="DsTranscodeSweep">Delete leftover playback copies after (hours)</label>
+                            <input id="DsTranscodeSweep" type="number" min="0" max="168" is="emby-input" />
+                            <div class="fieldDescription">Copies in Jellyfin's transcode folder that no one is playing and nothing has written for this long (a player that closes without saying so leaves a whole movie there). 0 leaves them to Jellyfin's daily clean-up.</div>
+                        </div>
+                    </div>
+                </section>
+
+                <section id="DsSecStorage" class="ds-section">
+                    <div class="ds-head"><span class="ds-num">3</span><h2>Storage folders</h2><span id="DsSumStorage" class="ds-sum"></span></div>
                     <div class="fieldDescription" style="margin-bottom:.8em;">
-                        Tried in order: a recording goes to the first location for its kind that keeps its own free-space floor.
-                        Each folder must be inside one of your libraries (e.g. a TV Shows or Movies folder), or moved
-                        recordings would disappear from Jellyfin. Recordings keep their show / season folders below it.
+                        Every place recordings can live outside the recording folders, each with its own floor: nothing is moved
+                        in if it would leave less free than that. "Make room" folders are used by the space manager, in this order,
+                        for the kinds they take; the shows below pick their folders from this list. Each folder must be inside a
+                        library, or moved recordings would disappear from Jellyfin. Recordings keep their show / season folders below it.
                     </div>
                     <div id="DsTargets"></div>
-                    <button is="emby-button" type="button" id="DsAddTarget" class="raised emby-button">
-                        <span>+ Add location</span>
-                    </button>
+                    <button is="emby-button" type="button" id="DsAddTarget" class="raised emby-button"><span>+ Add folder</span></button>
                     <div class="inputContainer" style="margin-top:1.2em;">
                         <input is="emby-input" type="text" id="DsSportsCategories" label="Guide categories that make a recording sports" />
                         <div class="fieldDescription">
-                            Separated by commas. Sports recordings go to "Sports" locations first, then to TV or Movies ones.
-                            The item menu's "Move to archive…" offers the locations for the recording's kind.
+                            Separated by commas. Sports recordings go to "Sports" folders first, then to TV or Movies ones.
+                            The item menu's "Move to archive…" offers the folders for the recording's kind.
                         </div>
                     </div>
-                </div>
+                </section>
 
-                <div class="verticalSection">
-                    <h2>Sorting: show locations and guide categories</h2>
+                <section id="DsSecShows" class="ds-section">
+                    <div class="ds-head"><span class="ds-num">4</span><h2>Where shows are stored</h2><span id="DsSumShows" class="ds-sum"></span></div>
+                    <div class="ds-grid">
+                        <div class="selectContainer">
+                            <label class="selectLabel" for="DsSortMode">Sorting (shows and category rules)</label>
+                            <select is="emby-select" id="DsSortMode" class="emby-select-withcolor emby-select">
+                                <option value="off">Off</option>
+                                <option value="preview">Preview: only show what would move</option>
+                                <option value="active">Active: move for real</option>
+                            </select>
+                            <div class="fieldDescription">Checked with the space check: every few minutes and after each recording.</div>
+                        </div>
+                    </div>
                     <div class="fieldDescription" style="margin-bottom:.8em;">
-                        Moves finished recordings out of the recording folders: first by show, then by guide category.
-                        Checked with the space check (every few minutes and after each recording).
-                    </div>
-
-                    <div class="selectContainer">
-                        <label class="selectLabel" for="DsSortMode">Sorting</label>
-                        <select is="emby-select" id="DsSortMode" class="emby-select-withcolor emby-select">
-                            <option value="off">Off</option>
-                            <option value="preview">Preview: only show what would move</option>
-                            <option value="active">Active: move for real</option>
-                        </select>
-                    </div>
-
-                    <h3>Where shows are stored</h3>
-                    <div class="fieldDescription" style="margin-bottom:.6em;">
-                        Pick a show and the folders its recordings should live in, in order of preference. When a recording of it
-                        finishes, it moves to the first folder with room (keeping that much free); with none having room it stays
-                        where it is. Checked before the category rules. Folders must be inside a library.
+                        A finished recording of the show goes to the first of its folders that stays above that folder's floor;
+                        with none having room it stays where it is. Checked before the category rules.
                     </div>
                     <datalist id="DsKnownShows"></datalist>
                     <div id="DsShows"></div>
-                    <button is="emby-button" type="button" id="DsAddShow" class="raised emby-button">
-                        <span>+ Add show</span>
-                    </button>
+                    <button is="emby-button" type="button" id="DsAddShow" class="raised emby-button"><span>+ Add show</span></button>
+                </section>
 
-                    <h3 style="margin-top:1.2em;">Category rules</h3>
-                    <div class="fieldDescription" style="margin-bottom:.6em;">
+                <section id="DsSecCats" class="ds-section">
+                    <div class="ds-head"><span class="ds-num">5</span><h2>Category rules</h2><span id="DsSumCats" class="ds-sum"></span></div>
+                    <div class="fieldDescription" style="margin-bottom:.8em;">
                         Jellyfin files movies and series in their own folders; everything else (comedy specials, one-off games, …)
-                        lands in the general recording folder. Rules here move those by their guide categories, tried in order:
-                        the first rule a recording matches decides where it goes. Recordings no rule matches stay put.
-                        Tick "series too" to also take matching recordings out of the series recording folder (games come
-                        with a series id, so Jellyfin files them as series).
-                        Empty destination = the movie recording folder.
+                        lands in the general recording folder. These rules move those by their guide categories, tried in order:
+                        the first one a recording matches decides where it goes. Tick "series too" to also take matching recordings
+                        out of the series folder (games come with a series id). Empty destination = the movie recording folder.
                     </div>
                     <div id="DsRules"></div>
-                    <button is="emby-button" type="button" id="DsAddRule" class="raised emby-button">
-                        <span>+ Add rule</span>
-                    </button>
+                    <button is="emby-button" type="button" id="DsAddRule" class="raised emby-button"><span>+ Add rule</span></button>
 
-                    <h3 id="DsSortTitle" style="margin-top:1.2em;">Would move</h3>
-                    <div id="DsSortWarning" class="fieldDescription" style="color:#f59e0b;white-space:pre-line;"></div>
-                    <table style="width:100%;border-collapse:collapse;font-size:.9em;">
-                        <thead><tr style="text-align:left;opacity:.7;">
-                            <th style="padding:.3em;">Recording</th><th>Rule</th><th>Categories</th><th>To</th>
-                        </tr></thead>
+                    <div id="DsSortTitle" class="ds-sub">Would move</div>
+                    <div id="DsSortWarning" class="fieldDescription ds-warn"></div>
+                    <table>
+                        <thead><tr><th>Recording</th><th>Rule</th><th>Categories</th><th>To</th></tr></thead>
                         <tbody id="DsSort"></tbody>
                     </table>
-                    <div id="DsSortNote" class="fieldDescription" style="margin-top:.6em;white-space:pre-line;"></div>
-                </div>
+                    <div id="DsSortNote" class="fieldDescription" style="margin-top:.6em;"></div>
+                </section>
 
-                <div class="verticalSection">
-                    <h2>JDVR devices</h2>
+                <section id="DsSecDevices" class="ds-section">
+                    <div class="ds-head"><span class="ds-num">6</span><h2>JDVR devices</h2><span id="DsSumDevices" class="ds-sum"></span></div>
                     <div class="fieldDescription" style="margin-bottom:.8em;">
                         What each TV running JDVR may do. These only narrow what its signed-in user may do in Jellyfin
                         (Dashboard › Users); they never add to it. JDVR hides what a TV may not do, and the server refuses it.
                         Other apps aren't affected. A TV picks up a change within a few minutes.
                     </div>
-                    <table style="width:100%;border-collapse:collapse;font-size:.9em;">
-                        <thead><tr style="text-align:left;opacity:.7;">
-                            <th style="padding:.3em;">Device</th><th>Live TV</th><th>Record</th><th>Delete recordings</th>
-                            <th>Delete from archive</th><th>Move to archive</th><th>Edit</th>
-                        </tr></thead>
+                    <table>
+                        <thead><tr><th>Device</th><th>Live TV</th><th>Record</th><th>Delete recordings</th><th>Delete from archive</th><th>Move to archive</th><th>Edit</th></tr></thead>
                         <tbody id="DsDevices"></tbody>
                     </table>
                     <div id="DsDevicesNote" class="fieldDescription" style="margin-top:.6em;"></div>
-                </div>
+                </section>
 
-                <div>
-                    <button is="emby-button" type="submit" class="raised button-submit block emby-button">
-                        <span>Save</span>
-                    </button>
+                <div class="ds-save">
+                    <span class="ds-note">Changes take effect when saved; saving runs a check.</span>
+                    <button is="emby-button" type="submit" class="raised button-submit emby-button"><span>Save</span></button>
                 </div>
             </form>
 
-            <div class="verticalSection">
-                <h2>Recent actions</h2>
-                <div id="DsRecent" class="fieldDescription" style="white-space:pre-line;">None yet.</div>
-            </div>
-
-            <div class="verticalSection">
-                <h2>Marked Keep</h2>
-                <div id="DsKeepList" class="fieldDescription" style="white-space:pre-line;">None.</div>
-            </div>
+            <section id="DsSecActivity" class="ds-section">
+                <div class="ds-head"><span class="ds-num">7</span><h2>Activity</h2><span class="ds-sum">recent moves · marked Keep</span></div>
+                <div class="ds-sub" style="margin-top:0;">Recent actions</div>
+                <div id="DsRecent" class="fieldDescription">None yet.</div>
+                <div class="ds-sub">Marked Keep</div>
+                <div id="DsKeepList" class="fieldDescription">None.</div>
+            </section>
         </div>
     </div>
 
@@ -226,39 +241,58 @@
                 return ApiClient.ajax({ type: method, url: ApiClient.getUrl(path), dataType: "json" });
             }
 
+            var lastTargets = [];
+
+            function targetNote(path) {
+                var t = lastTargets.filter(function (x) { return x.Path === (path || "").replace(/\/+$/, ""); })[0];
+                if (!t) { return ""; }
+                if (t.Problem) { return '<span class="ds-warn">' + esc(t.Problem) + '</span>'; }
+                return t.FreeBytes == null ? "" : '<span class="ds-note">' + gb(t.FreeBytes) + ' free' + (t.TotalBytes ? ' of ' + gb(t.TotalBytes) : '') + '</span>';
+            }
+
             function renderTargets() {
                 var host = page.querySelector("#DsTargets");
                 host.innerHTML = "";
                 targets.forEach(function (t, i) {
-                    var row = document.createElement("div");
-                    row.style.cssText = "display:flex;gap:.5em;align-items:center;flex-wrap:wrap;margin-bottom:.6em;";
-                    row.innerHTML =
+                    var card = document.createElement("div");
+                    card.className = "ds-card";
+                    card.innerHTML =
+                        '<div class="ds-row">' +
                         '<span style="width:1.5em;opacity:.7;">' + (i + 1) + '.</span>' +
                         '<input is="emby-input" type="text" data-f="Path" style="flex:1;min-width:16em;" placeholder="/mnt/nas/TV" value="' + esc(t.Path) + '">' +
                         '<select is="emby-select" data-f="Kind" class="emby-select-withcolor emby-select" style="width:8em;">' +
                         ['tv', 'movies', 'sports', 'both'].map(function (k) {
                             return '<option value="' + k + '"' + (t.Kind === k ? ' selected' : '') + '>' + { tv: 'TV', movies: 'Movies', sports: 'Sports', both: 'Both' }[k] + '</option>';
                         }).join('') + '</select>' +
-                        '<label style="opacity:.8;">keep free</label>' +
-                        '<input is="emby-input" type="number" min="0" data-f="KeepFreeGb" style="width:6em;" value="' + esc(t.KeepFreeGb) + '"><span>GB</span>' +
                         '<button is="emby-button" type="button" class="raised emby-button" data-a="up" title="Move up">▲</button>' +
                         '<button is="emby-button" type="button" class="raised emby-button" data-a="down" title="Move down">▼</button>' +
-                        '<button is="emby-button" type="button" class="raised emby-button" data-a="remove" title="Remove">✕</button>';
-                    row.querySelectorAll("[data-f]").forEach(function (el) {
+                        '<button is="emby-button" type="button" class="raised emby-button" data-a="remove" title="Remove">✕</button>' +
+                        '</div><div class="ds-row" style="padding-left:2em;">' +
+                        '<label class="ds-note">keep free</label>' +
+                        '<input is="emby-input" type="number" min="0" data-f="KeepFreeGb" style="width:6em;" value="' + esc(t.KeepFreeGb) + '"><span class="ds-note">GB</span>' +
+                        '<label class="ds-check" style="margin-left:1em;" title="The space manager may move recordings here to free the recordings drive"><input type="checkbox" data-f="MakeRoom"' + (t.MakeRoom ? ' checked' : '') + '> make room</label>' +
+                        '<span style="margin-left:auto;">' + targetNote(t.Path) + '</span>' +
+                        '</div>';
+                    card.querySelectorAll("[data-f]").forEach(function (el) {
                         el.addEventListener("change", function () {
-                            t[el.getAttribute("data-f")] = el.getAttribute("data-f") === "KeepFreeGb" ? (parseInt(el.value, 10) || 0) : el.value.trim();
+                            var f = el.getAttribute("data-f");
+                            t[f] = f === "KeepFreeGb" ? (parseInt(el.value, 10) || 0) : f === "MakeRoom" ? el.checked : el.value.trim();
+                            if (f === "Path") { renderShows(); }
+                            summarize();
                         });
                     });
-                    row.querySelectorAll("[data-a]").forEach(function (b) {
+                    card.querySelectorAll("[data-a]").forEach(function (b) {
                         b.addEventListener("click", function () {
                             var a = b.getAttribute("data-a");
                             if (a === "remove") { targets.splice(i, 1); }
                             if (a === "up" && i > 0) { targets.splice(i - 1, 0, targets.splice(i, 1)[0]); }
                             if (a === "down" && i < targets.length - 1) { targets.splice(i + 1, 0, targets.splice(i, 1)[0]); }
                             renderTargets();
+                            renderShows();
+                            summarize();
                         });
                     });
-                    host.appendChild(row);
+                    host.appendChild(card);
                 });
             }
 
@@ -297,14 +331,25 @@
                     });
                     host.appendChild(row);
                 });
+                summarize();
             }
 
             function locationNote(show, path) {
                 var st = lastShows.filter(function (x) { return x.Show.toLowerCase() === (show.Show || "").trim().toLowerCase(); })[0];
                 var loc = st && st.Locations.filter(function (l) { return l.Path === path.replace(/\/+$/, ""); })[0];
-                if (!loc) { return ""; }
-                if (loc.Problem) { return '<span style="color:#f59e0b;">' + esc(loc.Problem) + '</span>'; }
-                return loc.FreeBytes == null ? "" : '<span style="opacity:.7;">' + gb(loc.FreeBytes) + ' free</span>';
+                if (loc && loc.Problem) { return '<span class="ds-warn">' + esc(loc.Problem) + '</span>'; }
+                var free = loc && loc.FreeBytes != null ? loc.FreeBytes : null;
+                var t = lastTargets.filter(function (x) { return x.Path === path.replace(/\/+$/, ""); })[0];
+                if (free == null && t) { free = t.FreeBytes; }
+                return free == null ? "" : '<span class="ds-note">' + gb(free) + ' free</span>';
+            }
+
+            function folderOptions(selected) {
+                var paths = targets.map(function (t) { return t.Path; }).filter(function (p) { return p; });
+                if (selected && paths.indexOf(selected) < 0) { paths.push(selected); }
+                return '<option value="">Choose a storage folder…</option>' + paths.map(function (p) {
+                    return '<option value="' + esc(p) + '"' + (p === selected ? ' selected' : '') + '>' + esc(p) + '</option>';
+                }).join("");
             }
 
             function renderShows() {
@@ -312,36 +357,34 @@
                 host.innerHTML = "";
                 shows.forEach(function (sh, i) {
                     var box = document.createElement("div");
-                    box.style.cssText = "margin-bottom:.8em;padding-bottom:.6em;border-bottom:1px solid rgba(128,128,128,.2);";
+                    box.className = "ds-card";
                     var head = document.createElement("div");
-                    head.style.cssText = "display:flex;gap:.5em;align-items:center;flex-wrap:wrap;margin-bottom:.4em;";
+                    head.className = "ds-row";
                     head.innerHTML =
-                        '<label style="display:flex;align-items:center;gap:.3em;"><input type="checkbox" data-f="Enabled"' + (sh.Enabled ? ' checked' : '') + '> on</label>' +
-                        '<input is="emby-input" type="text" list="DsKnownShows" data-f="Show" style="flex:1;min-width:14em;" placeholder="Show, e.g. Tracker" value="' + esc(sh.Show) + '">' +
-                        '<label style="opacity:.8;">keep free</label>' +
-                        '<input is="emby-input" type="number" min="0" data-f="KeepFreeGb" style="width:6em;" value="' + esc(sh.KeepFreeGb) + '"><span>GB</span>' +
-                        '<button is="emby-button" type="button" class="raised emby-button" data-a="add">+ Location</button>' +
+                        '<label class="ds-check"><input type="checkbox" data-f="Enabled"' + (sh.Enabled ? ' checked' : '') + '> on</label>' +
+                        '<input is="emby-input" type="text" list="DsKnownShows" data-f="Show" style="flex:1;min-width:14em;font-weight:600;" placeholder="Show, e.g. Tracker" value="' + esc(sh.Show) + '">' +
                         '<button is="emby-button" type="button" class="raised emby-button" data-a="remove" title="Remove show">✕</button>';
                     head.querySelectorAll("[data-f]").forEach(function (el) {
                         el.addEventListener("change", function () {
                             var f = el.getAttribute("data-f");
-                            sh[f] = f === "Enabled" ? el.checked : f === "KeepFreeGb" ? (parseInt(el.value, 10) || 0) : el.value.trim();
+                            sh[f] = f === "Enabled" ? el.checked : el.value.trim();
+                            summarize();
                         });
                     });
-                    head.querySelector('[data-a="add"]').addEventListener("click", function () { sh.Locations.push(""); renderShows(); });
-                    head.querySelector('[data-a="remove"]').addEventListener("click", function () { shows.splice(i, 1); renderShows(); });
+                    head.querySelector('[data-a="remove"]').addEventListener("click", function () { shows.splice(i, 1); renderShows(); summarize(); });
                     box.appendChild(head);
                     sh.Locations.forEach(function (path, j) {
                         var row = document.createElement("div");
-                        row.style.cssText = "display:flex;gap:.5em;align-items:center;flex-wrap:wrap;margin:0 0 .4em 2em;";
+                        row.className = "ds-row";
+                        row.style.paddingLeft = "2em";
                         row.innerHTML =
                             '<span style="width:1.5em;opacity:.7;">' + (j + 1) + '.</span>' +
-                            '<input is="emby-input" type="text" data-f="Path" style="flex:1;min-width:16em;" placeholder="/mnt/nas/TV" value="' + esc(path) + '">' +
-                            '<span style="min-width:7em;">' + locationNote(sh, path) + '</span>' +
+                            '<select is="emby-select" data-f="Path" class="emby-select-withcolor emby-select" style="flex:1;min-width:16em;">' + folderOptions(path) + '</select>' +
+                            '<span style="min-width:7em;">' + (path ? locationNote(sh, path) : '') + '</span>' +
                             '<button is="emby-button" type="button" class="raised emby-button" data-a="up" title="Move up">▲</button>' +
                             '<button is="emby-button" type="button" class="raised emby-button" data-a="down" title="Move down">▼</button>' +
                             '<button is="emby-button" type="button" class="raised emby-button" data-a="remove" title="Remove">✕</button>';
-                        row.querySelector('[data-f="Path"]').addEventListener("change", function (e) { sh.Locations[j] = e.target.value.trim(); });
+                        row.querySelector('[data-f="Path"]').addEventListener("change", function (e) { sh.Locations[j] = e.target.value; renderShows(); });
                         row.querySelectorAll("[data-a]").forEach(function (b) {
                             b.addEventListener("click", function () {
                                 var a = b.getAttribute("data-a"), l = sh.Locations;
@@ -353,15 +396,38 @@
                         });
                         box.appendChild(row);
                     });
+                    var add = document.createElement("div");
+                    add.className = "ds-row";
+                    add.style.paddingLeft = "2em";
+                    add.innerHTML = '<button is="emby-button" type="button" class="raised emby-button"><span>+ Folder</span></button>';
+                    add.querySelector("button").addEventListener("click", function () { sh.Locations.push(""); renderShows(); });
+                    box.appendChild(add);
                     host.appendChild(box);
                 });
+            }
+
+            function badge(id, label, mode) {
+                var el = page.querySelector("#" + id);
+                el.textContent = label + ": " + ({ active: "Active", preview: "Preview", off: "Off" }[mode] || mode);
+                el.className = "ds-badge" + (mode === "active" ? " ds-on" : mode === "preview" ? " ds-preview" : "");
+            }
+
+            function summarize() {
+                badge("DsBadgeSpace", "Space manager", page.querySelector("#DsMode").value);
+                badge("DsBadgeSort", "Sorting", page.querySelector("#DsSortMode").value);
+                var used = targets.filter(function (t) { return t.Path; });
+                var room = used.filter(function (t) { return t.MakeRoom; }).length;
+                page.querySelector("#DsSumStorage").textContent = used.length + " folder" + (used.length === 1 ? "" : "s") + " · " + room + " used to make room";
+                var on = shows.filter(function (sh) { return sh.Show && sh.Enabled; }).length;
+                page.querySelector("#DsSumShows").textContent = on + " show" + (on === 1 ? "" : "s") + " on";
+                var rulesOn = rules.filter(function (r) { return r.Enabled && (r.Name || r.Categories); }).length;
+                page.querySelector("#DsSumCats").textContent = rulesOn + " rule" + (rulesOn === 1 ? "" : "s") + " on · for recordings that aren't series";
             }
 
             function renderSort(sort) {
                 if (sort && sort.Shows) {
                     lastShows = sort.Shows;
                     page.querySelector("#DsKnownShows").innerHTML = (sort.KnownShows || []).map(function (n) { return '<option value="' + esc(n) + '">'; }).join("");
-                    renderShows();
                 }
                 var body = page.querySelector("#DsSort");
                 var title = page.querySelector("#DsSortTitle");
@@ -397,7 +463,10 @@
             }
 
             function renderStatus(s) {
+                lastTargets = (s.Plan && s.Plan.Targets) || [];
                 renderSort(s.Sort);
+                renderTargets();
+                renderShows();
                 var plan = s.Plan;
                 var drive = page.querySelector("#DsDrive");
                 if (!plan) {
@@ -405,6 +474,7 @@
                     return;
                 }
                 var used = plan.TotalBytes - plan.FreeBytes;
+                page.querySelector("#DsSumDrive").textContent = gb(plan.FreeBytes) + " free · floor " + gb(plan.KeepFreeBytes);
                 drive.textContent = gb(plan.FreeBytes) + " free of " + gb(plan.TotalBytes) + " (keeping at least " + gb(plan.KeepFreeBytes) +
                     ") · recordings folders: " + (s.ManagedRoots || []).join(", ") + " · checked " + new Date(plan.CreatedUtc).toLocaleString();
                 var bar = page.querySelector("#DsBar");
@@ -414,7 +484,7 @@
                 var warnings = [];
                 if (plan.Warning) { warnings.push(plan.Warning); }
                 (plan.Targets || []).forEach(function (t) {
-                    if (t.Problem) { warnings.push("Archive " + t.Path + ": " + t.Problem); }
+                    if (t.Problem && t.MakeRoom) { warnings.push("Storage folder " + t.Path + ": " + t.Problem); }
                 });
                 page.querySelector("#DsWarning").textContent = warnings.join("\n");
 
@@ -489,6 +559,7 @@
                 });
                 body.appendChild(rightsRow(newDevices, "New devices", "what a TV gets the first time it signs in, until it is saved here"));
                 page.querySelector("#DsDevicesNote").textContent = devices.length ? "" : "No TV running JDVR has signed in yet.";
+                page.querySelector("#DsSumDevices").textContent = devices.length + " TV" + (devices.length === 1 ? "" : "s");
             }
 
             function loadDevices() {
@@ -522,7 +593,7 @@
                     page.querySelector("#DsAction").value = config.Action || "move";
                     page.querySelector("#DsOrder").value = config.Order || "watched-then-oldest";
                     page.querySelector("#DsWhenFull").value = config.WhenArchiveFull || "stop";
-                    targets = (config.ArchiveTargets || []).map(function (t) { return { Path: t.Path, Kind: (t.Kind || "both").toLowerCase(), KeepFreeGb: t.KeepFreeGb }; });
+                    targets = (config.ArchiveTargets || []).map(function (t) { return { Path: t.Path, Kind: (t.Kind || "both").toLowerCase(), KeepFreeGb: t.KeepFreeGb, MakeRoom: t.MakeRoom !== false }; });
                     renderTargets();
                     page.querySelector("#DsSportsCategories").value = config.SportsCategories || "";
                     page.querySelector("#DsSortMode").value = config.SortMode || "preview";
@@ -531,9 +602,10 @@
                     });
                     renderRules();
                     shows = (config.ShowLocations || []).map(function (sh) {
-                        return { Show: sh.Show, Enabled: sh.Enabled !== false, KeepFreeGb: sh.KeepFreeGb == null ? 50 : sh.KeepFreeGb, Locations: (sh.Locations || []).slice() };
+                        return { Show: sh.Show, Enabled: sh.Enabled !== false, Locations: (sh.Locations || []).slice() };
                     });
                     renderShows();
+                    summarize();
                     Dashboard.hideLoadingMsg();
                 });
                 load();
@@ -541,8 +613,9 @@
             });
 
             page.querySelector("#DsAddTarget").addEventListener("click", function () {
-                targets.push({ Path: "", Kind: "both", KeepFreeGb: 50 });
+                targets.push({ Path: "", Kind: "both", KeepFreeGb: 50, MakeRoom: true });
                 renderTargets();
+                summarize();
             });
 
             page.querySelector("#DsAddRule").addEventListener("click", function () {
@@ -551,11 +624,19 @@
             });
 
             page.querySelector("#DsAddShow").addEventListener("click", function () {
-                shows.push({ Show: "", Enabled: true, KeepFreeGb: 50, Locations: [""] });
+                shows.push({ Show: "", Enabled: true, Locations: [""] });
                 renderShows();
+                summarize();
             });
 
             page.querySelector("#DsRun").addEventListener("click", run);
+
+            page.querySelectorAll("[data-jump]").forEach(function (b) {
+                b.addEventListener("click", function () {
+                    page.querySelector("#" + b.getAttribute("data-jump")).scrollIntoView({ behavior: "smooth", block: "start" });
+                });
+            });
+            ["#DsMode", "#DsSortMode"].forEach(function (id) { page.querySelector(id).addEventListener("change", summarize); });
 
             page.querySelector("#DvrSpaceConfigForm").addEventListener("submit", function (e) {
                 e.preventDefault();
@@ -574,7 +655,7 @@
                     config.SortMode = page.querySelector("#DsSortMode").value;
                     config.CategoryRules = rules.filter(function (r) { return r.Name || r.Categories; });
                     config.ShowLocations = shows.filter(function (sh) { return sh.Show; }).map(function (sh) {
-                        return { Show: sh.Show, Enabled: sh.Enabled, KeepFreeGb: sh.KeepFreeGb, Locations: sh.Locations.filter(function (l) { return l; }) };
+                        return { Show: sh.Show, Enabled: sh.Enabled, KeepFreeGb: 0, Locations: sh.Locations.filter(function (l) { return l; }) };
                     });
                     function rightsOf(d) {
                         var o = {};

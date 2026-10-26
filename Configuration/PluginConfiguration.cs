@@ -3,7 +3,10 @@ using MediaBrowser.Model.Plugins;
 
 namespace Jellyfin.Plugin.DvrSpace.Configuration;
 
-/// <summary>An archive location recordings can be moved to, in order of preference.</summary>
+/// <summary>
+/// A storage folder (an archive location) recordings can be moved to: by the space manager, in order of
+/// preference, by "Move to archive…", and by the per-show locations, which pick folders from this list.
+/// </summary>
 public class ArchiveTarget
 {
     /// <summary>Folder to move into; must be inside one of the libraries, or moved
@@ -16,6 +19,12 @@ public class ArchiveTarget
 
     /// <summary>Never fill this location past this much free space (GB).</summary>
     public int KeepFreeGb { get; set; } = 50;
+
+    /// <summary>
+    /// The space manager may move recordings here to make room. Off: only shows that list the folder
+    /// (and "Move to archive…") use it.
+    /// </summary>
+    public bool MakeRoom { get; set; } = true;
 }
 
 /// <summary>
@@ -47,7 +56,8 @@ public class CategoryRule
 
 /// <summary>
 /// Where one show's recordings should live: finished recordings of it move out of the recording
-/// folders to the first of <see cref="Locations"/> with room. With none having room they stay put.
+/// folders to the first of <see cref="Locations"/> that stays above that folder's floor (its
+/// <see cref="ArchiveTarget.KeepFreeGb"/>). With none having room they stay put.
 /// </summary>
 public class ShowLocation
 {
@@ -56,11 +66,15 @@ public class ShowLocation
 
     public bool Enabled { get; set; } = true;
 
-    /// <summary>Folders inside a library, in order of preference; recordings keep their show/season layout below them.</summary>
+    /// <summary>Storage folders (paths from <see cref="PluginConfiguration.ArchiveTargets"/>), in order of preference;
+    /// recordings keep their show/season layout below them.</summary>
     public string[] Locations { get; set; } = Array.Empty<string>();
 
-    /// <summary>Don't fill a location past this much free space (GB).</summary>
-    public int KeepFreeGb { get; set; } = 50;
+    /// <summary>
+    /// Only read once, to carry a floor from before folders had their own: a listed folder that wasn't a
+    /// storage folder becomes one with this floor. Then 0.
+    /// </summary>
+    public int KeepFreeGb { get; set; }
 }
 
 /// <summary>
