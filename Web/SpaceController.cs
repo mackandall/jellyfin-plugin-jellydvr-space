@@ -110,6 +110,34 @@ public sealed class SpaceController : ControllerBase
         }
     }
 
+    /// <summary>Saves one programme's or recording's own folders: Mode "show" (follow the show), "drive" or "folders".</summary>
+    [HttpPost("RecordingStorage")]
+    public IActionResult SetRecordingStorage([FromBody] RecordingStorageRequest request)
+    {
+        if (_libraryManager.GetItemById(request.ItemId) is not { } item)
+        {
+            return NotFound(new { Message = "No such item." });
+        }
+
+        try
+        {
+            return Ok(new { Message = _manager.SetRecordingStorage(item, request.Mode ?? "show", request.Locations ?? Array.Empty<string>()) });
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { ex.Message });
+        }
+    }
+
+    public sealed class RecordingStorageRequest
+    {
+        public Guid ItemId { get; set; }
+
+        public string? Mode { get; set; }
+
+        public string[]? Locations { get; set; }
+    }
+
     public sealed class ShowStorageRequest
     {
         public string? Show { get; set; }

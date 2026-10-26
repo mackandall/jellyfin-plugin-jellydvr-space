@@ -78,6 +78,35 @@ public class ShowLocation
 }
 
 /// <summary>
+/// Where one recording goes, whatever its show's setting: picked for a guide programme (matched to
+/// the recording when it starts) or for a recording already made (by its file).
+/// </summary>
+public class RecordingChoice
+{
+    /// <summary>What it is, for the log and the settings page ("Forensic Files: Bitter Pill, Oct 26 9:00 PM").</summary>
+    public string Title { get; set; } = string.Empty;
+
+    /// <summary>The guide programme's id from the listings, and its channel's (as Jellyfin's timers have them).</summary>
+    public string ProgramId { get; set; } = string.Empty;
+
+    public string ChannelId { get; set; } = string.Empty;
+
+    public DateTime StartUtc { get; set; }
+
+    public DateTime EndUtc { get; set; }
+
+    /// <summary>The recording's files, once known (after a restart a recording can go on in a second file).</summary>
+    public string[] Paths { get; set; } = Array.Empty<string>();
+
+    /// <summary>Storage folders, in order of preference; none (with <see cref="StayOnDrive"/>): it stays put.</summary>
+    public string[] Locations { get; set; } = Array.Empty<string>();
+
+    public bool StayOnDrive { get; set; }
+
+    public DateTime CreatedUtc { get; set; }
+}
+
+/// <summary>
 /// What one JDVR client (a TV) may do. These only narrow what its signed-in user may do in
 /// Jellyfin; they never add to it.
 /// </summary>
@@ -211,6 +240,9 @@ public class PluginConfiguration : BasePluginConfiguration
 
     /// <summary>Per-show storage locations; checked before the category rules (sorting's mode applies).</summary>
     public ShowLocation[] ShowLocations { get; set; } = Array.Empty<ShowLocation>();
+
+    /// <summary>One recording's own storage choice; it wins over its show's (see <see cref="RecordingChoice"/>).</summary>
+    public RecordingChoice[] RecordingChoices { get; set; } = Array.Empty<RecordingChoice>();
 
     /// <summary>Rights of the JDVR clients set on the settings page, one per device.</summary>
     public DeviceRights[] DeviceRights { get; set; } = Array.Empty<DeviceRights>();

@@ -49,6 +49,7 @@ public sealed partial class SpaceManager : BackgroundService
     private readonly SemaphoreSlim _runLock = new(1, 1);
     private readonly ConcurrentQueue<ActionRecord> _recent = new();
     private Timer? _soon;
+    private Timer? _choices;
 
     public SpaceManager(
         ILogger<SpaceManager> logger,
@@ -85,6 +86,8 @@ public sealed partial class SpaceManager : BackgroundService
     {
         _libraryManager.ItemAdded += OnItemAdded;
         _soon = new Timer(_ => _ = RunSafeAsync("recording finished", stoppingToken), null, Timeout.Infinite, Timeout.Infinite);
+        // Every minute: tie recordings that just started to the storage choices made for them in the guide.
+        _choices = new Timer(_ => NoteChoicesSafe(), null, TimeSpan.FromSeconds(30), TimeSpan.FromMinutes(1));
         try
         {
             // Let the server finish starting before the first check.
@@ -102,6 +105,19 @@ public sealed partial class SpaceManager : BackgroundService
         {
             _libraryManager.ItemAdded -= OnItemAdded;
             _soon.Dispose();
+            _choices.Dispose();
+        }
+    }
+
+    private void NoteChoicesSafe()
+    {
+        try
+        {
+            NoteRecordingFiles();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Checking recordings' storage choices failed");
         }
     }
 

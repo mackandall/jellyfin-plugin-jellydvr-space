@@ -84,7 +84,16 @@ public sealed class CategorySorter
             .ToList();
         var series = Clean(tv.SeriesRecordingPath) is { } sp && sp != source ? sp : null;
         plan.Rules = CheckRules(cfg, tv, source, series);
-        plan.Shows = CheckShows(cfg, source, series);
+        plan.Shows = CheckShows(cfg, cfg.ShowLocations ?? Array.Empty<ShowLocation>(), source, series);
+        // Recordings with their own choice, by file; it wins over the show's.
+        var own = (cfg.RecordingChoices ?? Array.Empty<RecordingChoice>())
+            .SelectMany(c => (c.Paths ?? Array.Empty<string>()).Select(p => (Path: p, Choice: c)))
+            .GroupBy(x => x.Path)
+            .ToDictionary(g => g.Key, g => g.First().Choice);
+        var ownChoices = own.Values.Distinct().Where(c => !c.StayOnDrive).ToList();
+        var ownStatus = CheckShows(cfg, ownChoices.Select(c => new ShowLocation { Show = string.IsNullOrWhiteSpace(c.Title) ? "This recording" : c.Title, Locations = c.Locations }), source, series)
+            .Zip(ownChoices, (status, c) => (status, c))
+            .ToDictionary(x => x.c, x => x.status);
         plan.KnownShows = _libraryManager.GetItemList(new InternalItemsQuery { IncludeItemTypes = new[] { BaseItemKind.Series }, Recursive = true })
             .Select(s => s.Name)
             .Where(n => !string.IsNullOrWhiteSpace(n))
@@ -92,9 +101,9 @@ public sealed class CategorySorter
             .OrderBy(n => n, StringComparer.OrdinalIgnoreCase)
             .ToList();
         var shows = plan.Shows.Where(s => s.Enabled).ToList();
-        var fromSeries = series is not null && (plan.Rules.Any(r => r.Enabled && r.IncludeSeries) || shows.Count > 0);
+        var fromSeries = series is not null && (plan.Rules.Any(r => r.Enabled && r.IncludeSeries) || shows.Count > 0 || own.Count > 0);
         // Projected free space per show location as recordings are assigned to it.
-        var projected = plan.Shows.SelectMany(s => s.Locations)
+        var projected = plan.Shows.Concat(ownStatus.Values).SelectMany(s => s.Locations)
             .Where(l => l.FreeBytes is not null)
             .GroupBy(l => l.Path)
             .ToDictionary(g => g.Key, g => g.First().FreeBytes!.Value);
@@ -136,7 +145,11 @@ public sealed class CategorySorter
                 : IsOpen(path) ? "in use (e.g. commercial detection still reading it); will retry"
                 : null;
 
-            if (ShowOf(item, from!) is { } showName && shows.FirstOrDefault(s => SameShow(s.Show, showName)) is { } show)
+            own.TryGetValue(item.Path!, out var mine);
+            var show = mine is not null ? ownStatus.GetValueOrDefault(mine)
+                : ShowOf(item, from!) is { } showName ? shows.FirstOrDefault(s => SameShow(s.Show, showName))
+                : null;
+            if (mine is not null || show is not null)
             {
                 var file = item.Path!;
                 var showEntry = new SortItem
@@ -145,15 +158,15 @@ public sealed class CategorySorter
                     Name = item is Episode ep && !string.IsNullOrEmpty(ep.SeriesName) ? ep.SeriesName + ": " + item.Name : item.Name,
                     Path = file,
                     Source = from!,
-                    Rule = "Show: " + show.Show
+                    Rule = mine is not null ? "This recording" : "Show: " + show!.Show
                 };
-                showEntry.Why = Busy(file);
+                showEntry.Why = show is null ? "kept on the recording drive (its own choice)" : Busy(file);
                 if (showEntry.Why is null)
                 {
                     var bytes = RecordingFiles(file).Sum(SafeLength);
                     var rel = Path.GetRelativePath(from!, Path.GetDirectoryName(file)!);
                     var notes = new List<string>();
-                    foreach (var loc in show.Locations)
+                    foreach (var loc in show!.Locations)
                     {
                         var dest = Path.GetFullPath(Path.Combine(loc.Path, rel));
                         if (loc.Problem is { } locProblem)
@@ -178,7 +191,7 @@ public sealed class CategorySorter
 
                     if (showEntry.Destination is null)
                     {
-                        showEntry.Why = show.Locations.Count == 0 ? "no locations listed for the show"
+                        showEntry.Why = show!.Locations.Count == 0 ? "no locations listed for the show"
                             : "stays where it is: " + string.Join("; ", notes);
                     }
                 }
@@ -310,7 +323,7 @@ public sealed class CategorySorter
         return result;
     }
 
-    private List<ShowStatus> CheckShows(PluginConfiguration cfg, string source, string? series)
+    private List<ShowStatus> CheckShows(PluginConfiguration cfg, IEnumerable<ShowLocation> showLocations, string source, string? series)
     {
         var libraryPaths = _libraryManager.GetVirtualFolders()
             .SelectMany(f => f.Locations ?? Array.Empty<string>())
@@ -318,7 +331,7 @@ public sealed class CategorySorter
             .ToList();
         var free = new Dictionary<string, (bool Completed, (long Free, long Total)? Value)>();
         var result = new List<ShowStatus>();
-        foreach (var s in cfg.ShowLocations ?? Array.Empty<ShowLocation>())
+        foreach (var s in showLocations)
         {
             if (string.IsNullOrWhiteSpace(s.Show))
             {

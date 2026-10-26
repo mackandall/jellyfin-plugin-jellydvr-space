@@ -130,7 +130,7 @@ public sealed class DeviceRightsFilter : IAsyncResourceFilter
                 return new[] { Flag("archive") ? DeleteArchive : Delete };
             }
         }
-        else if (Is(0, "JellyDvrSpace") && writes && (Is(1, "Archive") || Is(1, "ShowStorage")))
+        else if (Is(0, "JellyDvrSpace") && writes && (Is(1, "Archive") || Is(1, "ShowStorage") || Is(1, "RecordingStorage")))
         {
             return new[] { Archive };
         }

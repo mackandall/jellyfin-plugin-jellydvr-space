@@ -49,9 +49,14 @@ public sealed partial class SpaceManager
                 Problem = t.Problem
             })
             .ToList();
-        result.MovesTo = result.Locations
-            .Select(p => result.Folders.FirstOrDefault(f => f.Path == p))
-            .FirstOrDefault(f => f is { Problem: null, FreeBytes: { } free } && free >= f.KeepFreeGb * Gb)?.Label;
+        result.MovesTo = FirstWithRoom(result.Locations, result.Folders);
+        result.Recording = GetRecordingStorage(item, cfg, result.Folders);
+        if (result.Recording is { Mode: not "show" } own)
+        {
+            // Its own choice wins over the show's.
+            result.MovesTo = own.MovesTo;
+        }
+
         result.OnRecordingDrive = item.Path is { } path && ManagedRoots().Any(r => IsUnder(path, r));
         return result;
     }
@@ -138,6 +143,9 @@ public sealed partial class SpaceManager
 
         /// <summary>The folder the next finished recording would go to, or null.</summary>
         public string? MovesTo { get; set; }
+
+        /// <summary>The programme's or recording's own choice; null for a series or a recording already moved.</summary>
+        public RecordingStorage? Recording { get; set; }
 
         /// <summary>The item asked about is a recording still on the recording drive.</summary>
         public bool OnRecordingDrive { get; set; }
