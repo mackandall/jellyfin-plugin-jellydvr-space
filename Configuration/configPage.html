@@ -122,15 +122,10 @@
                 </div>
 
                 <div class="verticalSection">
-                    <h2>Sort by guide category</h2>
+                    <h2>Sorting: show locations and guide categories</h2>
                     <div class="fieldDescription" style="margin-bottom:.8em;">
-                        Jellyfin files movies and series in their own folders; everything else (comedy specials, one-off games, …)
-                        lands in the general recording folder. Rules here move those by their guide categories, tried in order:
-                        the first rule a recording matches decides where it goes. Recordings no rule matches stay put.
-                        Tick "series too" to also take matching recordings out of the series recording folder (games come
-                        with a series id, so Jellyfin files them as series).
-                        Empty destination = the movie recording folder. Checked with the space check (every few minutes and
-                        after each recording).
+                        Moves finished recordings out of the recording folders: first by show, then by guide category.
+                        Checked with the space check (every few minutes and after each recording).
                     </div>
 
                     <div class="selectContainer">
@@ -142,6 +137,27 @@
                         </select>
                     </div>
 
+                    <h3>Where shows are stored</h3>
+                    <div class="fieldDescription" style="margin-bottom:.6em;">
+                        Pick a show and the folders its recordings should live in, in order of preference. When a recording of it
+                        finishes, it moves to the first folder with room (keeping that much free); with none having room it stays
+                        where it is. Checked before the category rules. Folders must be inside a library.
+                    </div>
+                    <datalist id="DsKnownShows"></datalist>
+                    <div id="DsShows"></div>
+                    <button is="emby-button" type="button" id="DsAddShow" class="raised emby-button">
+                        <span>+ Add show</span>
+                    </button>
+
+                    <h3 style="margin-top:1.2em;">Category rules</h3>
+                    <div class="fieldDescription" style="margin-bottom:.6em;">
+                        Jellyfin files movies and series in their own folders; everything else (comedy specials, one-off games, …)
+                        lands in the general recording folder. Rules here move those by their guide categories, tried in order:
+                        the first rule a recording matches decides where it goes. Recordings no rule matches stay put.
+                        Tick "series too" to also take matching recordings out of the series recording folder (games come
+                        with a series id, so Jellyfin files them as series).
+                        Empty destination = the movie recording folder.
+                    </div>
                     <div id="DsRules"></div>
                     <button is="emby-button" type="button" id="DsAddRule" class="raised emby-button">
                         <span>+ Add rule</span>
@@ -201,6 +217,8 @@
             var page = document.querySelector("#DvrSpaceConfigPage");
             var targets = [];
             var rules = [];
+            var shows = [];
+            var lastShows = [];
 
             function gb(bytes) { return (bytes / GB).toFixed(bytes < 10 * GB ? 1 : 0) + " GB"; }
             function esc(s) { var d = document.createElement("div"); d.textContent = s == null ? "" : String(s); return d.innerHTML; }
@@ -281,7 +299,70 @@
                 });
             }
 
+            function locationNote(show, path) {
+                var st = lastShows.filter(function (x) { return x.Show.toLowerCase() === (show.Show || "").trim().toLowerCase(); })[0];
+                var loc = st && st.Locations.filter(function (l) { return l.Path === path.replace(/\/+$/, ""); })[0];
+                if (!loc) { return ""; }
+                if (loc.Problem) { return '<span style="color:#f59e0b;">' + esc(loc.Problem) + '</span>'; }
+                return loc.FreeBytes == null ? "" : '<span style="opacity:.7;">' + gb(loc.FreeBytes) + ' free</span>';
+            }
+
+            function renderShows() {
+                var host = page.querySelector("#DsShows");
+                host.innerHTML = "";
+                shows.forEach(function (sh, i) {
+                    var box = document.createElement("div");
+                    box.style.cssText = "margin-bottom:.8em;padding-bottom:.6em;border-bottom:1px solid rgba(128,128,128,.2);";
+                    var head = document.createElement("div");
+                    head.style.cssText = "display:flex;gap:.5em;align-items:center;flex-wrap:wrap;margin-bottom:.4em;";
+                    head.innerHTML =
+                        '<label style="display:flex;align-items:center;gap:.3em;"><input type="checkbox" data-f="Enabled"' + (sh.Enabled ? ' checked' : '') + '> on</label>' +
+                        '<input is="emby-input" type="text" list="DsKnownShows" data-f="Show" style="flex:1;min-width:14em;" placeholder="Show, e.g. Tracker" value="' + esc(sh.Show) + '">' +
+                        '<label style="opacity:.8;">keep free</label>' +
+                        '<input is="emby-input" type="number" min="0" data-f="KeepFreeGb" style="width:6em;" value="' + esc(sh.KeepFreeGb) + '"><span>GB</span>' +
+                        '<button is="emby-button" type="button" class="raised emby-button" data-a="add">+ Location</button>' +
+                        '<button is="emby-button" type="button" class="raised emby-button" data-a="remove" title="Remove show">✕</button>';
+                    head.querySelectorAll("[data-f]").forEach(function (el) {
+                        el.addEventListener("change", function () {
+                            var f = el.getAttribute("data-f");
+                            sh[f] = f === "Enabled" ? el.checked : f === "KeepFreeGb" ? (parseInt(el.value, 10) || 0) : el.value.trim();
+                        });
+                    });
+                    head.querySelector('[data-a="add"]').addEventListener("click", function () { sh.Locations.push(""); renderShows(); });
+                    head.querySelector('[data-a="remove"]').addEventListener("click", function () { shows.splice(i, 1); renderShows(); });
+                    box.appendChild(head);
+                    sh.Locations.forEach(function (path, j) {
+                        var row = document.createElement("div");
+                        row.style.cssText = "display:flex;gap:.5em;align-items:center;flex-wrap:wrap;margin:0 0 .4em 2em;";
+                        row.innerHTML =
+                            '<span style="width:1.5em;opacity:.7;">' + (j + 1) + '.</span>' +
+                            '<input is="emby-input" type="text" data-f="Path" style="flex:1;min-width:16em;" placeholder="/mnt/nas/TV" value="' + esc(path) + '">' +
+                            '<span style="min-width:7em;">' + locationNote(sh, path) + '</span>' +
+                            '<button is="emby-button" type="button" class="raised emby-button" data-a="up" title="Move up">▲</button>' +
+                            '<button is="emby-button" type="button" class="raised emby-button" data-a="down" title="Move down">▼</button>' +
+                            '<button is="emby-button" type="button" class="raised emby-button" data-a="remove" title="Remove">✕</button>';
+                        row.querySelector('[data-f="Path"]').addEventListener("change", function (e) { sh.Locations[j] = e.target.value.trim(); });
+                        row.querySelectorAll("[data-a]").forEach(function (b) {
+                            b.addEventListener("click", function () {
+                                var a = b.getAttribute("data-a"), l = sh.Locations;
+                                if (a === "remove") { l.splice(j, 1); }
+                                if (a === "up" && j > 0) { l.splice(j - 1, 0, l.splice(j, 1)[0]); }
+                                if (a === "down" && j < l.length - 1) { l.splice(j + 1, 0, l.splice(j, 1)[0]); }
+                                renderShows();
+                            });
+                        });
+                        box.appendChild(row);
+                    });
+                    host.appendChild(box);
+                });
+            }
+
             function renderSort(sort) {
+                if (sort && sort.Shows) {
+                    lastShows = sort.Shows;
+                    page.querySelector("#DsKnownShows").innerHTML = (sort.KnownShows || []).map(function (n) { return '<option value="' + esc(n) + '">'; }).join("");
+                    renderShows();
+                }
                 var body = page.querySelector("#DsSort");
                 var title = page.querySelector("#DsSortTitle");
                 var note = page.querySelector("#DsSortNote");
@@ -449,6 +530,10 @@
                         return { Name: r.Name, Enabled: r.Enabled !== false, Categories: r.Categories, RequireAll: !!r.RequireAll, Destination: r.Destination, IncludeSeries: !!r.IncludeSeries };
                     });
                     renderRules();
+                    shows = (config.ShowLocations || []).map(function (sh) {
+                        return { Show: sh.Show, Enabled: sh.Enabled !== false, KeepFreeGb: sh.KeepFreeGb == null ? 50 : sh.KeepFreeGb, Locations: (sh.Locations || []).slice() };
+                    });
+                    renderShows();
                     Dashboard.hideLoadingMsg();
                 });
                 load();
@@ -463,6 +548,11 @@
             page.querySelector("#DsAddRule").addEventListener("click", function () {
                 rules.push({ Name: "", Enabled: true, Categories: "", RequireAll: false, Destination: "", IncludeSeries: false });
                 renderRules();
+            });
+
+            page.querySelector("#DsAddShow").addEventListener("click", function () {
+                shows.push({ Show: "", Enabled: true, KeepFreeGb: 50, Locations: [""] });
+                renderShows();
             });
 
             page.querySelector("#DsRun").addEventListener("click", run);
@@ -483,6 +573,9 @@
                     config.SportsCategories = page.querySelector("#DsSportsCategories").value;
                     config.SortMode = page.querySelector("#DsSortMode").value;
                     config.CategoryRules = rules.filter(function (r) { return r.Name || r.Categories; });
+                    config.ShowLocations = shows.filter(function (sh) { return sh.Show; }).map(function (sh) {
+                        return { Show: sh.Show, Enabled: sh.Enabled, KeepFreeGb: sh.KeepFreeGb, Locations: sh.Locations.filter(function (l) { return l; }) };
+                    });
                     function rightsOf(d) {
                         var o = {};
                         RIGHTS.forEach(function (r) { o[r] = !!d[r]; });

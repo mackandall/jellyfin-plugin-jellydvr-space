@@ -33,7 +33,7 @@ namespace Jellyfin.Plugin.DvrSpace.Space;
 /// </summary>
 public sealed partial class SpaceManager : BackgroundService
 {
-    private const long Gb = 1024L * 1024 * 1024;
+    internal const long Gb = 1024L * 1024 * 1024;
     private static readonly TimeSpan FsTimeout = TimeSpan.FromSeconds(15);
     private static readonly TimeSpan AfterRecordingDelay = TimeSpan.FromMinutes(2);
 
@@ -490,7 +490,7 @@ public sealed partial class SpaceManager : BackgroundService
 
     // ---- helpers ---------------------------------------------------------------------------
 
-    private static (long Free, long Total)? FreeSpace(string path)
+    internal static (long Free, long Total)? FreeSpace(string path)
     {
         try
         {
@@ -504,7 +504,7 @@ public sealed partial class SpaceManager : BackgroundService
     }
 
     // Network shares can hang (hard mounts wait for the NAS); never let that stall a check.
-    private static (bool Completed, T? Value) WithTimeout<T>(Func<T?> f)
+    internal static (bool Completed, T? Value) WithTimeout<T>(Func<T?> f)
     {
         var task = Task.Run(f);
         return task.Wait(FsTimeout) ? (true, task.Result) : (false, default);

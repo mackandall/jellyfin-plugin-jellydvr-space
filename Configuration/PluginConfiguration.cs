@@ -46,6 +46,24 @@ public class CategoryRule
 }
 
 /// <summary>
+/// Where one show's recordings should live: finished recordings of it move out of the recording
+/// folders to the first of <see cref="Locations"/> with room. With none having room they stay put.
+/// </summary>
+public class ShowLocation
+{
+    /// <summary>The show's name as Jellyfin has it (series name; case and spacing don't matter).</summary>
+    public string Show { get; set; } = string.Empty;
+
+    public bool Enabled { get; set; } = true;
+
+    /// <summary>Folders inside a library, in order of preference; recordings keep their show/season layout below them.</summary>
+    public string[] Locations { get; set; } = Array.Empty<string>();
+
+    /// <summary>Don't fill a location past this much free space (GB).</summary>
+    public int KeepFreeGb { get; set; } = 50;
+}
+
+/// <summary>
 /// What one JDVR client (a TV) may do. These only narrow what its signed-in user may do in
 /// Jellyfin; they never add to it.
 /// </summary>
@@ -176,6 +194,9 @@ public class PluginConfiguration : BasePluginConfiguration
         new() { Name = "Comedy specials", Categories = "Special, Comedy", RequireAll = true },
         new() { Name = "Sports", Enabled = false, Categories = "Sports, Sports event, Sporting event", IncludeSeries = true }
     };
+
+    /// <summary>Per-show storage locations; checked before the category rules (sorting's mode applies).</summary>
+    public ShowLocation[] ShowLocations { get; set; } = Array.Empty<ShowLocation>();
 
     /// <summary>Rights of the JDVR clients set on the settings page, one per device.</summary>
     public DeviceRights[] DeviceRights { get; set; } = Array.Empty<DeviceRights>();

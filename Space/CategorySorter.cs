@@ -9,6 +9,7 @@ using Jellyfin.Data.Enums;
 using Jellyfin.Plugin.DvrSpace.Configuration;
 using MediaBrowser.Common.Configuration;
 using MediaBrowser.Controller.Entities;
+using MediaBrowser.Controller.Entities.TV;
 using MediaBrowser.Controller.Library;
 using MediaBrowser.Controller.LiveTv;
 using MediaBrowser.Controller.Session;
@@ -26,6 +27,8 @@ namespace Jellyfin.Plugin.DvrSpace.Space;
 /// rule a recording matches moves it. A rule can also take recordings from the series folder
 /// (games have series ids, so they're filed as series) (with its sidecars, same safe copy-then-remove as archive
 /// moves). Categories come from the item's genres and the guide .nfo Jellyfin writes beside it.
+/// Before the rules, per-show locations: a show's recordings go to the first of its locations
+/// that has room, or stay put when none has.
 /// </summary>
 public sealed class CategorySorter
 {
@@ -81,7 +84,20 @@ public sealed class CategorySorter
             .ToList();
         var series = Clean(tv.SeriesRecordingPath) is { } sp && sp != source ? sp : null;
         plan.Rules = CheckRules(cfg, tv, source, series);
-        var fromSeries = series is not null && plan.Rules.Any(r => r.Enabled && r.IncludeSeries);
+        plan.Shows = CheckShows(cfg, source, series);
+        plan.KnownShows = _libraryManager.GetItemList(new InternalItemsQuery { IncludeItemTypes = new[] { BaseItemKind.Series }, Recursive = true })
+            .Select(s => s.Name)
+            .Where(n => !string.IsNullOrWhiteSpace(n))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(n => n, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        var shows = plan.Shows.Where(s => s.Enabled).ToList();
+        var fromSeries = series is not null && (plan.Rules.Any(r => r.Enabled && r.IncludeSeries) || shows.Count > 0);
+        // Projected free space per show location as recordings are assigned to it.
+        var projected = plan.Shows.SelectMany(s => s.Locations)
+            .Where(l => l.FreeBytes is not null)
+            .GroupBy(l => l.Path)
+            .ToDictionary(g => g.Key, g => g.First().FreeBytes!.Value);
 
         var keep = new HashSet<string>(cfg.KeepItemIds ?? Array.Empty<string>(), StringComparer.OrdinalIgnoreCase);
         var playing = _sessionManager.Sessions.Select(s => s.NowPlayingItem?.Id).OfType<Guid>().ToHashSet();
@@ -107,8 +123,66 @@ public sealed class CategorySorter
 
         foreach (var (item, from) in items.Where(x => !SpaceManager.IsLiveBuffer(x.Item))) // buffers stay put until kept
         {
-            var categories = Categories(item);
             var isSeries = from == series;
+            string? Busy(string path) =>
+                keep.Contains(item.Id.ToString("N")) ? "marked Keep"
+                : playing.Contains(item.Id) ? "being played"
+                : recordings?.GetActiveRecordingInfo(path) is not null ? "still recording"
+                : IsOpen(path) ? "in use (e.g. commercial detection still reading it); will retry"
+                : null;
+
+            if (ShowOf(item, from!) is { } showName && shows.FirstOrDefault(s => SameShow(s.Show, showName)) is { } show)
+            {
+                var file = item.Path!;
+                var showEntry = new SortItem
+                {
+                    ItemId = item.Id,
+                    Name = item is Episode ep && !string.IsNullOrEmpty(ep.SeriesName) ? ep.SeriesName + ": " + item.Name : item.Name,
+                    Path = file,
+                    Source = from!,
+                    Rule = "Show: " + show.Show
+                };
+                showEntry.Why = Busy(file);
+                if (showEntry.Why is null)
+                {
+                    var bytes = RecordingFiles(file).Sum(SafeLength);
+                    var rel = Path.GetRelativePath(from!, Path.GetDirectoryName(file)!);
+                    var notes = new List<string>();
+                    foreach (var loc in show.Locations)
+                    {
+                        var dest = Path.GetFullPath(Path.Combine(loc.Path, rel));
+                        if (loc.Problem is { } locProblem)
+                        {
+                            notes.Add($"{loc.Path}: {locProblem}");
+                        }
+                        else if (File.Exists(Path.Combine(dest, Path.GetFileName(file))))
+                        {
+                            notes.Add($"{loc.Path}: a recording with the same name is already there");
+                        }
+                        else if (projected.GetValueOrDefault(loc.Path) - bytes < show.KeepFreeGb * SpaceManager.Gb)
+                        {
+                            notes.Add($"{loc.Path}: no room (keeping {show.KeepFreeGb} GB free)");
+                        }
+                        else
+                        {
+                            projected[loc.Path] -= bytes;
+                            showEntry.Destination = dest;
+                            break;
+                        }
+                    }
+
+                    if (showEntry.Destination is null)
+                    {
+                        showEntry.Why = show.Locations.Count == 0 ? "no locations listed for the show"
+                            : "stays where it is: " + string.Join("; ", notes);
+                    }
+                }
+
+                (showEntry.Destination is null ? plan.Skipped : plan.Items).Add(showEntry);
+                continue;
+            }
+
+            var categories = Categories(item);
             var rule = plan.Rules.FirstOrDefault(r => r.Enabled && (!isSeries || r.IncludeSeries) && r.Matches(categories));
             if (rule is null)
             {
@@ -132,12 +206,7 @@ public sealed class CategorySorter
                 Categories = string.Join(", ", categories)
             };
 
-            entry.Why = rule.Problem is { } problem ? $"rule \"{rule.Name}\": {problem}"
-                : keep.Contains(item.Id.ToString("N")) ? "marked Keep"
-                : playing.Contains(item.Id) ? "being played"
-                : recordings?.GetActiveRecordingInfo(path) is not null ? "still recording"
-                : IsOpen(path) ? "in use (e.g. commercial detection still reading it); will retry"
-                : null;
+            entry.Why = rule.Problem is { } problem ? $"rule \"{rule.Name}\": {problem}" : Busy(path);
             if (entry.Why is not null)
             {
                 plan.Skipped.Add(entry);
@@ -236,6 +305,68 @@ public sealed class CategorySorter
         return result;
     }
 
+    private List<ShowStatus> CheckShows(PluginConfiguration cfg, string source, string? series)
+    {
+        var libraryPaths = _libraryManager.GetVirtualFolders()
+            .SelectMany(f => f.Locations ?? Array.Empty<string>())
+            .Select(p => p.TrimEnd('/'))
+            .ToList();
+        var free = new Dictionary<string, (bool Completed, (long Free, long Total)? Value)>();
+        var result = new List<ShowStatus>();
+        foreach (var s in cfg.ShowLocations ?? Array.Empty<ShowLocation>())
+        {
+            if (string.IsNullOrWhiteSpace(s.Show))
+            {
+                continue;
+            }
+
+            var status = new ShowStatus { Show = s.Show.Trim(), Enabled = s.Enabled, KeepFreeGb = Math.Max(0, s.KeepFreeGb) };
+            foreach (var path in (s.Locations ?? Array.Empty<string>()).Select(Clean).OfType<string>())
+            {
+                if (!free.TryGetValue(path, out var space))
+                {
+                    // Network shares can hang; only ask each one once a run.
+                    space = s.Enabled ? SpaceManager.WithTimeout(() => Directory.Exists(path) ? SpaceManager.FreeSpace(path) : null) : (true, null);
+                    free[path] = space;
+                }
+
+                status.Locations.Add(new LocationStatus
+                {
+                    Path = path,
+                    FreeBytes = space.Value?.Free,
+                    TotalBytes = space.Value?.Total,
+                    Problem = path == source || IsUnder(path, source) || IsUnder(source, path) ? "overlaps the recording folder"
+                        : series is not null && (path == series || IsUnder(path, series) || IsUnder(series, path)) ? "overlaps the series recording folder"
+                        : !s.Enabled ? null
+                        : space.Value is null ? (space.Completed ? "not found" : "not responding")
+                        : !libraryPaths.Any(l => path == l || IsUnder(path, l)) ? "not inside any library (moved recordings would disappear from Jellyfin)"
+                        : null
+                });
+            }
+
+            result.Add(status);
+        }
+
+        return result;
+    }
+
+    /// <summary>The show a recording belongs to: its series name, or for one in the general folder its folder there.</summary>
+    private static string? ShowOf(BaseItem item, string from)
+    {
+        if (item is Episode e && !string.IsNullOrWhiteSpace(e.SeriesName))
+        {
+            return e.SeriesName;
+        }
+
+        var rel = Path.GetRelativePath(from, Path.GetDirectoryName(item.Path!)!);
+        return rel == "." ? item.Name : rel.Split('/')[0];
+    }
+
+    internal static bool SameShow(string a, string b) => Normal(a) == Normal(b);
+
+    private static string Normal(string s) =>
+        string.Join(' ', s.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries)).ToLowerInvariant();
+
     /// <summary>
     /// The guide categories for a recording: the item's genres plus the &lt;genre&gt; entries in
     /// the guide .nfo Jellyfin's DVR writes beside it (kept even if metadata fetching later
@@ -285,6 +416,28 @@ public sealed class CategorySorter
         }
     }
 
+    public sealed class ShowStatus
+    {
+        public string Show { get; set; } = string.Empty;
+
+        public bool Enabled { get; set; }
+
+        public int KeepFreeGb { get; set; }
+
+        public List<LocationStatus> Locations { get; set; } = new();
+    }
+
+    public sealed class LocationStatus
+    {
+        public string Path { get; set; } = string.Empty;
+
+        public long? FreeBytes { get; set; }
+
+        public long? TotalBytes { get; set; }
+
+        public string? Problem { get; set; }
+    }
+
     public sealed class SortItem
     {
         public Guid ItemId { get; set; }
@@ -316,6 +469,11 @@ public sealed class CategorySorter
         public string? Warning { get; set; }
 
         public List<RuleStatus> Rules { get; set; } = new();
+
+        public List<ShowStatus> Shows { get; set; } = new();
+
+        /// <summary>The library's show names, for picking one on the settings page.</summary>
+        public List<string> KnownShows { get; set; } = new();
 
         public List<SortItem> Items { get; set; } = new();
 
