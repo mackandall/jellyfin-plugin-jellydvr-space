@@ -11,6 +11,10 @@
  * `button.actionSheetMenuItem` entries; the item is the `.card[data-id]` / `.listItem[data-id]`
  * whose `[data-action="menu"]` (or right-click) opened the sheet, else the details page's item.
  * Our button's click must bubble (no stopPropagation): that is what closes the sheet.
+ *
+ * Also "Store in…" (GET /JellyDvrSpace/ShowStorage/{id}): a button in a guide programme's Record
+ * row (the guide's programme popup and the programme's page), and an entry in a recording's
+ * "..." sheet, opening a window that sets this recording's own folders or the whole show's.
  */
 (function () {
   'use strict';
@@ -283,6 +287,7 @@
     if (!itemId) {
       return;
     }
+    injectStoreMenuItem(scroller, itemId);
 
     checkIsAdmin().then(function (isAdmin) {
       return isAdmin ? getChoices(itemId) : null;
@@ -413,7 +418,355 @@
   setInterval(function () {
     refreshMoving();
     renderMoving();
+    checkDetailsStored();
   }, 2000);
+
+  // ---- Store in… ----------------------------------------------------------------------------
+
+  // The guide programme whose popup is opening (the popup doesn't name it in its markup).
+  var programId = null;
+  var programClickedAt = 0;
+  document.addEventListener('click', function (e) {
+    var cell = e.target && e.target.closest && e.target.closest('.programCell[data-id]');
+    if (cell) {
+      programId = cell.getAttribute('data-id');
+      programClickedAt = Date.now();
+    }
+  }, true);
+
+  function detailsId() {
+    var hash = window.location.hash || '';
+    var q = hash.indexOf('?');
+    return hash.indexOf('#/details') === 0 && q !== -1 ? new URLSearchParams(hash.slice(q + 1)).get('id') : null;
+  }
+
+  function getStorage(itemId) {
+    var apiClient = window.ApiClient;
+    return apiClient.ajax({
+      type: 'GET',
+      url: apiClient.getUrl('JellyDvrSpace/ShowStorage/' + itemId),
+      dataType: 'json'
+    }).catch(function () { return null; });
+  }
+
+  function labelOf(storage, path) {
+    var f = storage.Folders.filter(function (x) { return x.Path === path; })[0];
+    return f ? f.Label : path;
+  }
+
+  // Where this item's recordings go: its own choice if it has one, else the show's.
+  function storeSummary(storage) {
+    var own = storage.Recording;
+    if (own && own.Mode === 'drive') {
+      return 'recording drive (this recording)';
+    }
+    var paths = own && own.Mode === 'folders' ? own.Locations : storage.Locations;
+    var where = paths.map(function (p) { return labelOf(storage, p); }).join(', then ');
+    if (!where) {
+      return '';
+    }
+    return where + (own && own.Mode === 'folders' ? ' (this recording)' : own ? ' (whole show)' : '');
+  }
+
+  function usableStorage(storage) {
+    return storage && !storage.Problem && storage.Folders && storage.Folders.length;
+  }
+
+  function showStorePicker(itemId, storage, onSaved) {
+    var overlay = el('div', 'position:fixed;inset:0;z-index:100000;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;padding:16px;');
+    var box = el('div', 'background:#202020;color:#fff;border-radius:10px;max-width:780px;width:100%;max-height:85vh;overflow:auto;padding:1.2em 1.4em;box-shadow:0 8px 40px rgba(0,0,0,.6);font-size:95%;');
+    overlay.appendChild(box);
+    function close() {
+      document.removeEventListener('keydown', onKey, true);
+      if (overlay.parentNode) {
+        overlay.parentNode.removeChild(overlay);
+      }
+    }
+    function onKey(e) {
+      if (e.key === 'Escape') {
+        e.stopPropagation();
+        close();
+      }
+    }
+    overlay.addEventListener('click', function (e) {
+      if (e.target === overlay) {
+        close();
+      }
+    });
+    document.addEventListener('keydown', onKey, true);
+
+    var own = storage.Recording;
+    var state = { one: !!own, mode: own ? own.Mode : 'show', chosen: (own ? own.Locations : storage.Locations).slice(), saving: false };
+    var showWhere = storage.Locations.map(function (p) { return labelOf(storage, p); }).join(', then ');
+
+    function switchTo(one) {
+      if (one === state.one) {
+        return;
+      }
+      state.one = one;
+      state.chosen = (one ? own.Locations : storage.Locations).slice();
+      state.mode = one ? own.Mode : 'show';
+      render();
+    }
+
+    function button(text, primary, onClick) {
+      var b = el('button', 'padding:.55em 1.2em;border-radius:6px;border:0;background:' + (primary ? '#00a4dc' : 'rgba(255,255,255,.12)')
+        + ';color:#fff;font:inherit;cursor:pointer;', text);
+      b.type = 'button';
+      b.addEventListener('click', onClick);
+      return b;
+    }
+
+    function folderRow(f, number, actions) {
+      var usable = !f.Problem;
+      var row = el('div', 'display:grid;grid-template-columns:2em minmax(0,1fr) 13em auto;gap:.9em;align-items:center;padding:.6em .9em;border-radius:8px;margin-bottom:.5em;'
+        + (number === '+' ? 'border:1px dashed rgba(255,255,255,.25);' : 'background:rgba(255,255,255,.07);') + 'opacity:' + (usable ? '1' : '.55') + ';');
+      row.appendChild(el('div', 'font-weight:700;color:' + (number === '+' ? '#9a9a9a' : '#00a4dc') + ';', number));
+      var name = el('div', 'min-width:0;');
+      name.appendChild(el('div', 'font-weight:500;', f.Label));
+      name.appendChild(el('div', 'opacity:.7;font-size:85%;', (f.Kind === 'movies' ? 'takes movies · ' : '') + 'keeps ' + f.KeepFreeGb + ' GB free'));
+      if (f.Problem) {
+        name.appendChild(el('div', 'color:#f87171;font-size:85%;', f.Problem));
+      }
+      row.appendChild(name);
+      var space = el('div', '');
+      if (f.FreeBytes != null && f.TotalBytes) {
+        space.appendChild(spaceBar(f, 0, 'this'));
+        space.appendChild(el('div', 'opacity:.7;font-size:85%;margin-top:.25em;', gb(f.FreeBytes) + ' free of ' + gb(f.TotalBytes)));
+      }
+      row.appendChild(space);
+      var acts = el('div', 'display:flex;gap:.35em;justify-content:flex-end;');
+      actions.forEach(function (a) {
+        var b = el('button', 'min-width:2.2em;height:2.2em;padding:0 .6em;border-radius:5px;border:0;background:rgba(255,255,255,.14);color:#fff;font:inherit;cursor:pointer;', a[0]);
+        b.type = 'button';
+        b.title = a[1];
+        b.setAttribute('aria-label', a[1]);
+        b.disabled = !usable && a[1] === 'Add';
+        b.addEventListener('click', a[2]);
+        acts.appendChild(b);
+      });
+      row.appendChild(acts);
+      return row;
+    }
+
+    function render() {
+      box.innerHTML = '';
+      box.appendChild(el('h2', 'margin:0 0 .5em;font-size:1.3em;font-weight:500;', state.one ? 'Store this recording in' : 'Store this show in'));
+      if (own) {
+        var tabs = el('div', 'display:flex;border-bottom:1px solid rgba(255,255,255,.15);margin-bottom:.7em;');
+        [[true, 'This recording'], [false, 'Every ' + storage.Show + ' recording']].forEach(function (t) {
+          var b = el('button', 'padding:.55em 1.1em;border:0;background:transparent;color:' + (state.one === t[0] ? '#fff' : '#aaa')
+            + ';font:inherit;cursor:pointer;border-bottom:3px solid ' + (state.one === t[0] ? '#00a4dc' : 'transparent') + ';', t[1]);
+          b.type = 'button';
+          b.addEventListener('click', function () { switchTo(t[0]); });
+          tabs.appendChild(b);
+        });
+        box.appendChild(tabs);
+      }
+      box.appendChild(el('div', 'opacity:.8;margin-bottom:.8em;', state.one
+        ? own.Title + ' · only this one; it wins over the show\'s setting'
+        : storage.Show + ' · every recording of the show, on any channel; each goes to the first folder with room.' + (own ? ' Airings with their own choice keep it.' : '')));
+      if (storage.SortMode !== 'active') {
+        box.appendChild(el('div', 'color:#f59e0b;margin-bottom:.8em;', 'Sorting is ' + (storage.SortMode === 'off' ? 'off' : 'in Preview')
+          + ' (JellyDVR Space settings), so nothing moves until it\'s Active.'));
+      }
+
+      var caption = state.chosen.length ? 'IN THIS ORDER'
+        : !state.one || state.mode === 'drive' ? 'IN THIS ORDER · none: it stays on the recording drive'
+          : 'IN THIS ORDER · none: follows the show (' + (showWhere || 'recording drive') + ')';
+      box.appendChild(el('div', 'font-size:80%;font-weight:700;letter-spacing:.06em;opacity:.7;margin:.3em 0 .5em;', caption));
+      state.chosen.forEach(function (path, i) {
+        var f = storage.Folders.filter(function (x) { return x.Path === path; })[0] || { Path: path, Label: path, KeepFreeGb: 0, Problem: 'no longer a storage folder' };
+        var actions = [];
+        if (i > 0) {
+          actions.push(['▲', 'Try first', function () { state.chosen.splice(i, 1); state.chosen.unshift(path); render(); }]);
+        }
+        if (i < state.chosen.length - 1) {
+          actions.push(['▼', 'Try later', function () { state.chosen.splice(i, 1); state.chosen.splice(i + 1, 0, path); render(); }]);
+        }
+        actions.push(['✕', 'Take out', function () {
+          state.chosen.splice(i, 1);
+          if (!state.chosen.length && state.mode === 'folders') {
+            state.mode = 'show';
+          }
+          render();
+        }]);
+        box.appendChild(folderRow(f, String(i + 1), actions));
+      });
+
+      // Movie-only folders aren't for shows.
+      var others = storage.Folders.filter(function (f) { return state.chosen.indexOf(f.Path) < 0 && f.Kind !== 'movies'; });
+      if (others.length) {
+        box.appendChild(el('div', 'font-size:80%;font-weight:700;letter-spacing:.06em;opacity:.7;margin:.8em 0 .5em;', 'ADD A FOLDER'));
+        others.forEach(function (f) {
+          box.appendChild(folderRow(f, '+', [['Add', 'Add', function () { state.chosen.push(f.Path); state.mode = 'folders'; render(); }]]));
+        });
+      }
+
+      var bar = el('div', 'display:flex;gap:.6em;flex-wrap:wrap;align-items:center;margin-top:1em;');
+      bar.appendChild(button(state.saving ? 'Saving…' : 'Save', true, save));
+      if (state.one) {
+        if (state.chosen.length || state.mode !== 'drive') {
+          bar.appendChild(button('Keep on the recording drive', false, function () { state.chosen = []; state.mode = 'drive'; render(); }));
+        }
+        if (state.chosen.length || state.mode !== 'show') {
+          bar.appendChild(button('Follow the show', false, function () { state.chosen = []; state.mode = 'show'; render(); }));
+        }
+      } else if (state.chosen.length) {
+        bar.appendChild(button('Keep on the recording drive', false, function () { state.chosen = []; render(); }));
+      }
+      var cancel = button('Cancel', false, close);
+      cancel.style.marginLeft = 'auto';
+      cancel.style.background = 'transparent';
+      bar.appendChild(cancel);
+      box.appendChild(bar);
+      if (state.problem) {
+        box.appendChild(el('div', 'color:#f59e0b;margin-top:.6em;', state.problem));
+      }
+    }
+
+    function save() {
+      if (state.saving) {
+        return;
+      }
+      state.saving = true;
+      state.problem = null;
+      render();
+      var apiClient = window.ApiClient;
+      var body = state.one
+        ? { ItemId: itemId, Mode: state.chosen.length ? 'folders' : (state.mode === 'drive' ? 'drive' : 'show'), Locations: state.chosen }
+        : { Show: storage.Show, Locations: state.chosen };
+      apiClient.ajax({
+        type: 'POST',
+        url: apiClient.getUrl(state.one ? 'JellyDvrSpace/RecordingStorage' : 'JellyDvrSpace/ShowStorage'),
+        data: JSON.stringify(body),
+        contentType: 'application/json',
+        dataType: 'json'
+      }).then(function (r) {
+        close();
+        notify((r && r.Message) || 'Saved.');
+        onSaved();
+      }).catch(function (err) {
+        failureMessage(err, 'Couldn\'t save it.').then(function (m) {
+          state.saving = false;
+          state.problem = m;
+          render();
+        });
+      });
+    }
+
+    render();
+    document.body.appendChild(overlay);
+  }
+
+  // A row under Record / Record series, built like theirs.
+  function injectStoreRow(fields, itemId) {
+    if (fields.querySelector('.jdvrspace-store')) {
+      return;
+    }
+    checkIsAdmin().then(function (admin) {
+      return admin ? getStorage(itemId) : null;
+    }).then(function (storage) {
+      if (!usableStorage(storage) || fields.querySelector('.jdvrspace-store')) {
+        return;
+      }
+      var row = el('div', '');
+      row.className = 'recordingFields-buttons flex align-items-center jdvrspace-store';
+      var holder = el('div', '');
+      var b = document.createElement('button');
+      b.setAttribute('is', 'emby-button');
+      b.type = 'button';
+      b.className = 'raised recordingButton emby-button';
+      var icon = el('span', '');
+      icon.className = 'material-icons recordingIcon folder_open';
+      icon.setAttribute('aria-hidden', 'true');
+      var text = el('span', '', 'Store in…');
+      text.className = 'buttonText';
+      b.appendChild(icon);
+      b.appendChild(text);
+      holder.appendChild(b);
+      row.appendChild(holder);
+      var where = el('span', 'margin-left:.8em;', '');
+      where.className = 'secondaryText';
+      row.appendChild(where);
+      function show(s) {
+        storage = s || storage;
+        where.textContent = storeSummary(storage);
+      }
+      show(storage);
+      b.addEventListener('click', function (e) {
+        e.preventDefault();
+        getStorage(itemId).then(function (fresh) {
+          showStorePicker(itemId, usableStorage(fresh) ? fresh : storage, function () { getStorage(itemId).then(show); });
+        });
+      });
+      fields.appendChild(row);
+    });
+  }
+
+  function checkRecordingRows(root) {
+    var rows = root.querySelectorAll ? root.querySelectorAll('.recordingFields > .recordingFields-buttons:last-child') : [];
+    for (var i = 0; i < rows.length; i++) {
+      var fields = rows[i].parentNode;
+      var inDialog = fields.closest('.dialog, .formDialog');
+      var id = inDialog ? (Date.now() - programClickedAt < 15000 ? programId : null) : detailsId();
+      if (id && !fields.getAttribute('data-jdvrspace-for')) {
+        fields.setAttribute('data-jdvrspace-for', id);
+        injectStoreRow(fields, id);
+      }
+    }
+  }
+
+  // A recording's page: where it will move to, while it's still on the recording drive.
+  function checkDetailsStored() {
+    var id = detailsId();
+    var page = document.querySelector('.itemDetailPage:not(.hide)') || document;
+    var section = id && page.querySelector('.detailSectionContent');
+    if (!section || section.getAttribute('data-jdvrspace-for') === id) {
+      return;
+    }
+    section.setAttribute('data-jdvrspace-for', id);
+    var old = section.querySelector('.jdvrspace-stored');
+    if (old) {
+      old.remove();
+    }
+    checkIsAdmin().then(function (admin) {
+      return admin ? getStorage(id) : null;
+    }).then(function (storage) {
+      if (!storage || !storage.OnRecordingDrive || !storage.MovesTo || storage.SortMode !== 'active' || detailsId() !== id) {
+        return;
+      }
+      var own = storage.Recording && storage.Recording.Mode === 'folders';
+      var box = el('div', 'display:inline-flex;flex-direction:column;gap:.2em;margin:.2em 0 1em;padding:.6em .9em;border-radius:6px;background:rgba(255,255,255,.06);border:1px solid rgba(0,164,220,.35);');
+      box.className = 'jdvrspace-stored';
+      box.appendChild(el('div', 'font-size:75%;font-weight:700;letter-spacing:.06em;opacity:.7;', 'STORED'));
+      box.appendChild(el('div', '', 'On the recording drive'));
+      box.appendChild(el('div', 'color:#9fd8ef;', '→ moves to ' + storage.MovesTo + (own ? ' (this recording\'s choice)' : ' (the show\'s setting)')));
+      section.insertBefore(box, section.firstChild);
+    });
+  }
+
+  // A recording's "..." sheet: only while it is still on the recording drive (it has its own choice then).
+  function injectStoreMenuItem(scroller, itemId) {
+    checkIsAdmin().then(function (admin) {
+      return admin ? getStorage(itemId) : null;
+    }).then(function (storage) {
+      if (!usableStorage(storage) || !storage.Recording || storage.Recording.Upcoming || scroller.querySelector('[data-id="jdvrspace-store"]')) {
+        return;
+      }
+      var where = storeSummary(storage);
+      var button = buildMenuItem('jdvrspace-store', 'folder_open', 'Store in…' + (where ? ' · ' + where : ''), function () {
+        setTimeout(function () {
+          getStorage(itemId).then(function (fresh) {
+            if (usableStorage(fresh)) {
+              showStorePicker(itemId, fresh, function () {});
+            }
+          });
+        }, 150);
+      });
+      scroller.appendChild(button);
+    });
+  }
 
   var observer = new MutationObserver(function (mutations) {
     for (var i = 0; i < mutations.length; i++) {
@@ -428,6 +781,10 @@
           : (node.querySelector && node.querySelector('.actionSheetScroller'));
         if (scroller) {
           tryInject(scroller);
+        }
+        checkRecordingRows(node);
+        if (node.querySelector && node.querySelector('.detailSectionContent')) {
+          checkDetailsStored();
         }
       }
     }
