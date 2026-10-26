@@ -91,6 +91,32 @@ public sealed class SpaceController : ControllerBase
         }
     }
 
+    /// <summary>"Store this show in…": the show of any of its items, its folders, and every storage folder.</summary>
+    [HttpGet("ShowStorage/{itemId}")]
+    public IActionResult ShowStorage([FromRoute] Guid itemId) =>
+        _libraryManager.GetItemById(itemId) is { } item ? Ok(_manager.GetShowStorage(item)) : NotFound();
+
+    /// <summary>Saves a show's storage folders, in order (none: it stays on the recording drive).</summary>
+    [HttpPost("ShowStorage")]
+    public IActionResult SetShowStorage([FromBody] ShowStorageRequest request)
+    {
+        try
+        {
+            return Ok(new { Message = _manager.SetShowStorage(request.Show ?? string.Empty, request.Locations ?? Array.Empty<string>()) });
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { ex.Message });
+        }
+    }
+
+    public sealed class ShowStorageRequest
+    {
+        public string? Show { get; set; }
+
+        public string[]? Locations { get; set; }
+    }
+
     private IActionResult SetKeep(Guid itemId, bool keep)
     {
         if (Plugin.Instance is not { } plugin)
