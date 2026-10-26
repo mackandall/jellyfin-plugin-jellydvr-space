@@ -345,7 +345,9 @@
             }
 
             function folderOptions(selected) {
-                var paths = targets.map(function (t) { return t.Path; }).filter(function (p) { return p; });
+                // Movie-only folders aren't for shows (one already chosen still shows).
+                var paths = targets.filter(function (t) { return t.Kind !== "movies"; })
+                    .map(function (t) { return t.Path; }).filter(function (p) { return p; });
                 if (selected && paths.indexOf(selected) < 0) { paths.push(selected); }
                 return '<option value="">Choose a storage folder…</option>' + paths.map(function (p) {
                     return '<option value="' + esc(p) + '"' + (p === selected ? ' selected' : '') + '>' + esc(p) + '</option>';

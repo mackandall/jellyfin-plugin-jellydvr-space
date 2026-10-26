@@ -35,7 +35,10 @@ public sealed partial class SpaceManager
             .Select(p => p.Trim().TrimEnd('/'))
             .Where(p => p.Length > 0)
             .ToList();
-        result.Folders = CheckTargets(cfg).Select(t => new StorageFolder
+        // Movie-only folders aren't offered for a show, unless it already uses one (to take it out).
+        result.Folders = CheckTargets(cfg)
+            .Where(t => t.Kind != "movies" || result.Locations.Contains(t.Path))
+            .Select(t => new StorageFolder
             {
                 Path = t.Path,
                 Label = FolderLabel(t.Path),
