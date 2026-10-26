@@ -297,6 +297,9 @@ public sealed partial class SpaceManager : BackgroundService
                 Recursive = true
             })
             .Where(i => i.Path is { } p && roots.Any(r => IsUnder(p, r)))
+            // The library keeps listing a recording for a minute after it moves (the sort just
+            // before this, or Move to archive); its file is already gone, so leave it out.
+            .Where(i => File.Exists(i.Path))
             .Select(i => new Candidate(
                 i,
                 roots.First(r => IsUnder(i.Path!, r)),
