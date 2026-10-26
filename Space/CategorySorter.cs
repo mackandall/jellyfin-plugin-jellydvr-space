@@ -123,6 +123,11 @@ public sealed class CategorySorter
 
         foreach (var (item, from) in items.Where(x => !SpaceManager.IsLiveBuffer(x.Item))) // buffers stay put until kept
         {
+            if (!File.Exists(item.Path))
+            {
+                continue; // just moved (the library still has the old path until it notices)
+            }
+
             var isSeries = from == series;
             string? Busy(string path) =>
                 keep.Contains(item.Id.ToString("N")) ? "marked Keep"
