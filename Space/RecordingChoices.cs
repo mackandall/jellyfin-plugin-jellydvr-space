@@ -123,7 +123,7 @@ public sealed partial class SpaceManager
         {
             "folders" => $"This recording: stored in {string.Join(", then ", paths.Select(FolderLabel))}.",
             "drive" => "This recording stays on the recording drive.",
-            _ => "This recording uses the show's setting."
+            _ => "This recording is back to the default (the show's setting)."
         };
         return mode != "folders" || cfg.SortMode == PluginConfiguration.SortActive
             ? said

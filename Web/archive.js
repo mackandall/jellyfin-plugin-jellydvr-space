@@ -581,7 +581,7 @@
 
       var caption = state.chosen.length ? 'IN THIS ORDER'
         : !state.one || state.mode === 'drive' ? 'IN THIS ORDER · none: it stays on the recording drive'
-          : 'IN THIS ORDER · none: uses the show\'s setting (' + (showWhere || 'recording drive') + ')';
+          : 'IN THIS ORDER · none: the default, the show\'s setting (' + (showWhere || 'recording drive') + ')';
       box.appendChild(el('div', 'font-size:80%;font-weight:700;letter-spacing:.06em;opacity:.7;margin:.3em 0 .5em;', caption));
       state.chosen.forEach(function (path, i) {
         var f = storage.Folders.filter(function (x) { return x.Path === path; })[0] || { Path: path, Label: path, KeepFreeGb: 0, Problem: 'no longer a storage folder' };
@@ -618,7 +618,7 @@
           bar.appendChild(button('Keep on the recording drive', false, function () { state.chosen = []; state.mode = 'drive'; render(); }));
         }
         if (state.chosen.length || state.mode !== 'show') {
-          bar.appendChild(button('Use the show\'s setting', false, function () { state.chosen = []; state.mode = 'show'; render(); }));
+          bar.appendChild(button('Restore default', false, function () { state.chosen = []; state.mode = 'show'; render(); }));
         }
       } else if (state.chosen.length) {
         bar.appendChild(button('Keep on the recording drive', false, function () { state.chosen = []; render(); }));
