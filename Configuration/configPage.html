@@ -138,7 +138,7 @@
                     <div class="ds-head"><span class="ds-num">3</span><h2>Storage folders</h2><span id="DsSumStorage" class="ds-sum"></span></div>
                     <div class="fieldDescription" style="margin-bottom:.8em;">
                         Every place recordings can live outside the recording folders, each with its own floor: nothing is moved
-                        in if it would leave less free than that. "Make room" folders are used by the space manager, in this order,
+                        in if it would leave less free than that. Folders ticked "Use when recording drive is low" are used by the space manager, in this order,
                         for the kinds they take; the shows below pick their folders from this list. Each folder must be inside a
                         library, or moved recordings would disappear from Jellyfin. Recordings keep their show / season folders below it.
                     </div>
@@ -270,7 +270,7 @@
                         '</div><div class="ds-row" style="padding-left:2em;">' +
                         '<label class="ds-note">keep free</label>' +
                         '<input is="emby-input" type="number" min="0" data-f="KeepFreeGb" style="width:6em;" value="' + esc(t.KeepFreeGb) + '"><span class="ds-note">GB</span>' +
-                        '<label class="ds-check" style="margin-left:1em;" title="The space manager may move recordings here to free the recordings drive"><input type="checkbox" data-f="MakeRoom"' + (t.MakeRoom ? ' checked' : '') + '> make room</label>' +
+                        '<label class="ds-check" style="margin-left:1em;" title="The space manager may move recordings here to free the recordings drive"><input type="checkbox" data-f="MakeRoom"' + (t.MakeRoom ? ' checked' : '') + '> Use when recording drive is low</label>' +
                         '<span style="margin-left:auto;">' + targetNote(t.Path) + '</span>' +
                         '</div>';
                     card.querySelectorAll("[data-f]").forEach(function (el) {
@@ -417,7 +417,7 @@
                 badge("DsBadgeSort", "Sorting", page.querySelector("#DsSortMode").value);
                 var used = targets.filter(function (t) { return t.Path; });
                 var room = used.filter(function (t) { return t.MakeRoom; }).length;
-                page.querySelector("#DsSumStorage").textContent = used.length + " folder" + (used.length === 1 ? "" : "s") + " · " + room + " used to make room";
+                page.querySelector("#DsSumStorage").textContent = used.length + " folder" + (used.length === 1 ? "" : "s") + " · " + room + " used when the drive is low";
                 var on = shows.filter(function (sh) { return sh.Show && sh.Enabled; }).length;
                 page.querySelector("#DsSumShows").textContent = on + " show" + (on === 1 ? "" : "s") + " on";
                 var rulesOn = rules.filter(function (r) { return r.Enabled && (r.Name || r.Categories); }).length;
