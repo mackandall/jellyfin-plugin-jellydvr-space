@@ -201,9 +201,11 @@
                         What each TV running JDVR may do. These only narrow what its signed-in user may do in Jellyfin
                         (Dashboard › Users); they never add to it. JDVR hides what a TV may not do, and the server refuses it.
                         Other apps aren't affected. A TV picks up a change within a few minutes.
+                        Remove takes a TV off the list and signs it out of Jellyfin (for an old install or a TV you no
+                        longer use); a TV still in use signs in again with the New devices rights.
                     </div>
                     <table>
-                        <thead><tr><th>Device</th><th>Live TV</th><th>Record</th><th>Delete recordings</th><th>Delete from archive</th><th>Move to archive</th><th>Edit</th></tr></thead>
+                        <thead><tr><th>Device</th><th>Live TV</th><th>Record</th><th>Delete recordings</th><th>Delete from archive</th><th>Move to archive</th><th>Edit</th><th></th></tr></thead>
                         <tbody id="DsDevices"></tbody>
                     </table>
                     <div id="DsDevicesNote" class="fieldDescription" style="margin-top:.6em;"></div>
@@ -540,14 +542,37 @@
             var devices = [];
             var newDevices = {};
 
-            function rightsRow(d, label, sub) {
+            function rightsRow(d, label, sub, removable) {
                 var tr = document.createElement("tr");
                 tr.style.borderTop = "1px solid rgba(128,128,128,.2)";
                 tr.innerHTML = '<td style="padding:.4em .3em;">' + esc(label) + (sub ? '<div style="opacity:.6;font-size:.9em;">' + esc(sub) + '</div>' : '') + '</td>' +
-                    RIGHTS.map(function (r) { return '<td><input type="checkbox" data-r="' + r + '"' + (d[r] ? ' checked' : '') + '></td>'; }).join('');
+                    RIGHTS.map(function (r) { return '<td><input type="checkbox" data-r="' + r + '"' + (d[r] ? ' checked' : '') + '></td>'; }).join('') +
+                    '<td>' + (removable ? '<button is="emby-button" type="button" class="raised emby-button" data-remove style="padding:.1em .6em;">Remove</button>' : '') + '</td>';
                 tr.querySelectorAll("[data-r]").forEach(function (el) {
                     el.addEventListener("change", function () { d[el.getAttribute("data-r")] = el.checked; });
                 });
+                var remove = tr.querySelector("[data-remove]");
+                if (remove) {
+                    // Second click to confirm: it signs the TV out of Jellyfin too.
+                    remove.addEventListener("click", function () {
+                        if (!remove.hasAttribute("data-sure")) {
+                            remove.setAttribute("data-sure", "");
+                            remove.textContent = "Remove and sign out?";
+                            remove.style.background = "#a33";
+                            setTimeout(function () {
+                                remove.removeAttribute("data-sure");
+                                remove.textContent = "Remove";
+                                remove.style.background = "";
+                            }, 5000);
+                            return;
+                        }
+                        remove.disabled = true;
+                        api("DELETE", "JellyDvrSpace/Devices/" + encodeURIComponent(d.DeviceId)).then(loadDevices, function () {
+                            remove.disabled = false;
+                            remove.textContent = "Couldn't remove";
+                        });
+                    });
+                }
                 return tr;
             }
 
@@ -557,7 +582,7 @@
                 devices.forEach(function (d) {
                     var sub = [d.App, (d.Users || []).join(", "), d.LastActivity ? "last used " + new Date(d.LastActivity).toLocaleString() : "",
                         d.Saved ? "" : "new: not saved yet"].filter(function (x) { return x; }).join(" · ");
-                    body.appendChild(rightsRow(d, d.Name || d.DeviceId, sub));
+                    body.appendChild(rightsRow(d, d.Name || d.DeviceId, sub, true));
                 });
                 body.appendChild(rightsRow(newDevices, "New devices", "what a TV gets the first time it signs in, until it is saved here"));
                 page.querySelector("#DsDevicesNote").textContent = devices.length ? "" : "No TV running JDVR has signed in yet.";

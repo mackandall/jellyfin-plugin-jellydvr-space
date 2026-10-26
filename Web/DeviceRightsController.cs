@@ -1,11 +1,13 @@
 using System;
 using System.Linq;
+using System.Threading.Tasks;
 using Jellyfin.Data.Queries;
 using Jellyfin.Plugin.DvrSpace.Configuration;
 using Jellyfin.Plugin.DvrSpace.Devices;
 using MediaBrowser.Common.Api;
 using MediaBrowser.Controller.Devices;
 using MediaBrowser.Controller.Library;
+using MediaBrowser.Controller.Session;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
@@ -18,11 +20,13 @@ public sealed class DeviceRightsController : ControllerBase
 {
     private readonly IDeviceManager _deviceManager;
     private readonly IUserManager _userManager;
+    private readonly ISessionManager _sessionManager;
 
-    public DeviceRightsController(IDeviceManager deviceManager, IUserManager userManager)
+    public DeviceRightsController(IDeviceManager deviceManager, IUserManager userManager, ISessionManager sessionManager)
     {
         _deviceManager = deviceManager;
         _userManager = userManager;
+        _sessionManager = sessionManager;
     }
 
     /// <summary>
@@ -79,5 +83,39 @@ public sealed class DeviceRightsController : ControllerBase
                 s.LiveTv, s.Record, s.Delete, s.DeleteArchive, s.Archive, s.Edit
             });
         return Ok(new { Devices = known.OrderBy(d => d.Name).Concat(gone).ToList(), NewDevices = cfg.NewDeviceRights ?? new DeviceRights() });
+    }
+
+    /// <summary>
+    /// Takes a TV off the list: its saved rights go, and it is signed out of Jellyfin (as Dashboard ›
+    /// Devices does), or it would come straight back as a new device. A TV still in use signs in
+    /// again and gets the New devices rights.
+    /// </summary>
+    [HttpDelete("Devices/{deviceId}")]
+    [Authorize(Policy = Policies.RequiresElevation)]
+    public async Task<IActionResult> RemoveDevice([FromRoute] string deviceId)
+    {
+        var plugin = Plugin.Instance;
+        if (plugin is null)
+        {
+            return NotFound();
+        }
+
+        var saved = plugin.Configuration.DeviceRights ?? Array.Empty<DeviceRights>();
+        var kept = saved.Where(s => !string.Equals(s.DeviceId, deviceId, StringComparison.OrdinalIgnoreCase)).ToArray();
+        if (kept.Length != saved.Length)
+        {
+            plugin.Configuration.DeviceRights = kept;
+            plugin.SaveConfiguration();
+        }
+
+        var signIns = _deviceManager.GetDevices(new DeviceQuery { DeviceId = deviceId }).Items
+            .Where(d => d.AppName is not null && d.AppName.StartsWith("JDVR", StringComparison.OrdinalIgnoreCase))
+            .ToList();
+        foreach (var d in signIns)
+        {
+            await _sessionManager.Logout(d.AccessToken).ConfigureAwait(false);
+        }
+
+        return Ok(new { Removed = kept.Length != saved.Length || signIns.Count > 0, SignedOut = signIns.Count });
     }
 }
