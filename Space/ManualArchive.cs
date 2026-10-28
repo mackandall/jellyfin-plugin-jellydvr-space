@@ -216,6 +216,13 @@ public sealed partial class SpaceManager
             choices.Progress = Moving().FirstOrDefault(m => m.ItemId == item.Id);
         }
 
+        // Moved already, and the library hasn't caught up yet (it does within a minute or so).
+        if (choices.InFlight is null && !File.Exists(item.Path))
+        {
+            choices.Moved = true;
+            return choices;
+        }
+
         choices.Bytes = RecordingFiles(item.Path!).Sum(f => SafeLength(f));
         choices.Blocked = WhyNot(item);
         foreach (var t in CheckTargets(cfg)
@@ -258,6 +265,11 @@ public sealed partial class SpaceManager
         if (choices.InFlight is not null)
         {
             throw new InvalidOperationException("It's already being moved.");
+        }
+
+        if (choices.Moved)
+        {
+            throw new InvalidOperationException("It has already been moved; the library will show it in its new place in a moment.");
         }
 
         if (choices.Blocked is { } why)
@@ -346,6 +358,9 @@ public sealed partial class SpaceManager
 
         /// <summary>Why it can't be moved right now (e.g. "still recording"), or null.</summary>
         public string? Blocked { get; set; }
+
+        /// <summary>Its file has already been moved away (the library hasn't caught up yet).</summary>
+        public bool Moved { get; set; }
 
         /// <summary>Where it's being moved to right now, or null.</summary>
         public string? InFlight { get; set; }

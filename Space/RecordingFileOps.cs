@@ -30,7 +30,14 @@ internal static class RecordingFileOps
     public static void MoveRecording(string videoPath, string root, string destDir, ILibraryMonitor libraryMonitor, ILogger logger)
     {
         var files = RecordingFiles(videoPath);
-        var conflicts = files.Select(f => Path.Combine(destDir, Path.GetFileName(f))).Where(File.Exists).ToList();
+        var collisions = files.Select(f => Path.Combine(destDir, Path.GetFileName(f))).Where(File.Exists).ToList();
+        // Side files with no video of the same name beside them are leftovers (a re-record's
+        // replaced recording is renamed to ".ts.replaced" and leaves its .nfo behind), so they
+        // are replaced; a video, or side files that still belong to one, block the move.
+        var baseName = Path.GetFileNameWithoutExtension(videoPath);
+        var destHasVideo = collisions.Count > 0
+            && Directory.GetFiles(destDir).Any(f => IsVideo(f) && Path.GetFileNameWithoutExtension(f) == baseName);
+        var conflicts = collisions.Where(c => destHasVideo || IsVideo(c)).ToList();
         if (conflicts.Count > 0)
         {
             throw new IOException($"already exists at the destination: {Path.GetFileName(conflicts[0])}");
@@ -38,6 +45,14 @@ internal static class RecordingFileOps
 
         Directory.CreateDirectory(destDir);
         CopyFolderMetadata(Path.GetDirectoryName(videoPath)!, root, destDir);
+
+        // Leftovers are set aside until the move is complete, and put back if it fails.
+        var leftovers = new List<string>();
+        foreach (var c in collisions)
+        {
+            File.Move(c, c + ".jdvrold");
+            leftovers.Add(c);
+        }
 
         // The video last, so a half-copied move leaves no playable duplicate behind.
         var copied = new List<string>();
@@ -65,7 +80,25 @@ internal static class RecordingFileOps
                 TryDelete(c);
             }
 
+            foreach (var l in leftovers)
+            {
+                try
+                {
+                    File.Move(l + ".jdvrold", l, overwrite: true);
+                }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+                {
+                    logger.LogWarning(ex, "Could not put back {File}", l);
+                }
+            }
+
             throw;
+        }
+
+        foreach (var l in leftovers)
+        {
+            TryDelete(l + ".jdvrold");
+            logger.LogInformation("Replaced leftover {File} at the destination", l);
         }
 
         foreach (var src in files)

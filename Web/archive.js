@@ -198,11 +198,14 @@
       box.appendChild(legend);
     }
 
-    if (choices.Blocked) {
+    if (choices.Moved) {
+      box.appendChild(el('div', 'color:#f59e0b;margin-bottom:1em;',
+        'It has already been moved. The library will show it in its new place in a moment.'));
+    } else if (choices.Blocked) {
       box.appendChild(el('div', 'color:#f59e0b;margin-bottom:1em;', 'It can\'t be moved while it\'s ' + choices.Blocked + '.'));
     }
 
-    if (!choices.Targets.length) {
+    if (!choices.Targets.length && !choices.Moved) {
       box.appendChild(el('div', 'margin-bottom:1em;',
         'No archive location takes ' + (KIND_LABELS[choices.Kind] || choices.Kind).toLowerCase()
         + ' recordings yet. Add one in Dashboard \u2192 Plugins \u2192 JellyDVR Space \u2192 Archive storage.'));
