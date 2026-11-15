@@ -137,6 +137,45 @@ public class DeviceRights
     public bool Edit { get; set; } = true;
 }
 
+/// <summary>
+/// An "Archive automatically" rule: which finished recordings it takes, when (watched, days old),
+/// and where they go. Rules are tried in order; the first a recording matches decides.
+/// </summary>
+public class AutoArchiveRule
+{
+    public const string WhichAll = "all";
+    public const string WhichTv = "tv";
+    public const string WhichMovies = "movies";
+    public const string WhichSports = "sports";
+    public const string WhichCategory = "category";
+    public const string WhichShow = "show";
+
+    public const string WatchedAny = "any";
+    public const string WatchedSomeone = "watched";
+    public const string WatchedEveryone = "everyone";
+
+    /// <summary>A label for the rule, for the page and the log.</summary>
+    public string Name { get; set; } = string.Empty;
+
+    public bool Enabled { get; set; } = true;
+
+    /// <summary>"all", "tv" (anything not a movie), "movies", "sports", "category" or "show".</summary>
+    public string Which { get; set; } = WhichTv;
+
+    /// <summary>With "category": guide categories, separated by commas (any one matches). With "show": the show's name.</summary>
+    public string Match { get; set; } = string.Empty;
+
+    /// <summary>"any" (watched or not), "watched" (by someone) or "everyone" (every user who can sign in).</summary>
+    public string Watched { get; set; } = WatchedAny;
+
+    /// <summary>Days after it was recorded (0: as soon as it is processed).</summary>
+    public int AfterDays { get; set; }
+
+    /// <summary>Storage folders (paths from <see cref="PluginConfiguration.ArchiveTargets"/>), in order; none: any
+    /// storage folder that takes the recording's kind, in the list's order.</summary>
+    public string[] Locations { get; set; } = Array.Empty<string>();
+}
+
 public class PluginConfiguration : BasePluginConfiguration
 {
     public const string SortOff = "off";
@@ -237,6 +276,35 @@ public class PluginConfiguration : BasePluginConfiguration
         new() { Name = "Comedy specials", Categories = "Special, Comedy", RequireAll = true },
         new() { Name = "Sports", Enabled = false, Categories = "Sports, Sports event, Sporting event", IncludeSeries = true }
     };
+
+
+    // ---- Archive automatically ----
+
+    /// <summary>Moving finished recordings to storage by rule: "off" (the default), "preview" or "active".</summary>
+    public string AutoArchiveMode { get; set; } = SortOff;
+
+    /// <summary>The rules, tried in order. Two starters; nothing happens while the mode is off.</summary>
+    public AutoArchiveRule[] AutoArchiveRules { get; set; } =
+    {
+        new() { Name = "Watched TV", Which = AutoArchiveRule.WhichTv, Watched = AutoArchiveRule.WatchedSomeone },
+        new() { Name = "Movies after 2 days", Which = AutoArchiveRule.WhichMovies, AfterDays = 2 }
+    };
+
+    /// <summary>
+    /// Hours a recording waits for its commercial scan (Comskip) to finish; after that it goes anyway
+    /// (channels Comskip skips never get one). A failed scan counts as finished. 0: don't wait.
+    /// </summary>
+    public int AutoArchiveScanWaitHours { get; set; } = 12;
+
+    /// <summary>
+    /// Days an incomplete recording waits for Episode History to record it again (the new copy replaces
+    /// it on the recordings drive). 0: don't wait.
+    /// </summary>
+    public int AutoArchiveRerecordWaitDays { get; set; } = 14;
+
+    /// <summary>At most this many recordings moved per check (one at a time), so a first run with a long
+    /// backlog doesn't hold up the space check for hours.</summary>
+    public int AutoArchivePerRun { get; set; } = 10;
 
     /// <summary>Per-show storage locations; checked before the category rules (sorting's mode applies).</summary>
     public ShowLocation[] ShowLocations { get; set; } = Array.Empty<ShowLocation>();

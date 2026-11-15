@@ -156,6 +156,8 @@ public sealed partial class SpaceManager : BackgroundService
         {
             var cfg = Config;
             await Task.Run(() => Sort(cfg, reason, ct), ct).ConfigureAwait(false);
+            // Then the automatic archive rules, so the space check sees what they moved.
+            await Task.Run(() => AutoArchive(cfg, reason, ct), ct).ConfigureAwait(false);
 
             var plan = await Task.Run(() => BuildPlan(cfg), ct).ConfigureAwait(false);
             plan.Reason = reason;

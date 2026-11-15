@@ -43,6 +43,7 @@ public sealed class SpaceController : ControllerBase
             ManagedRoots = _manager.ManagedRoots(),
             Plan = _manager.LastPlan,
             Sort = _sorter.LastPlan,
+            AutoArchive = _manager.LastAutoArchive,
             Recent = _manager.RecentActions,
             Keep = keep
         });

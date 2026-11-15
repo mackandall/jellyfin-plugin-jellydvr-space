@@ -39,7 +39,7 @@
         #DvrSpaceConfigPage th { text-align: left; opacity: .7; padding: .3em; font-weight: 600; }
         /* Jellyfin's theme forces white-space on .fieldDescription: these list one item a line. */
         #DvrSpaceConfigPage #DsWarning, #DvrSpaceConfigPage #DsSkipped, #DvrSpaceConfigPage #DsSortWarning,
-        #DvrSpaceConfigPage #DsSortNote, #DvrSpaceConfigPage #DsRecent, #DvrSpaceConfigPage #DsKeepList { white-space: pre-line !important; }
+        #DvrSpaceConfigPage #DsSortNote, #DvrSpaceConfigPage #DsAutoNote, #DvrSpaceConfigPage #DsRecent, #DvrSpaceConfigPage #DsKeepList { white-space: pre-line !important; }
     </style>
     <div data-role="content">
         <div class="content-primary">
@@ -48,6 +48,7 @@
                 <h1>JellyDVR Space</h1>
                 <span id="DsBadgeSpace" class="ds-badge">Space manager</span>
                 <span id="DsBadgeSort" class="ds-badge">Sorting</span>
+                <span id="DsBadgeAuto" class="ds-badge">Archive automatically</span>
                 <a is="emby-linkbutton" class="button-link" style="margin-left:auto;" href="#/configurationpage?name=JellyDvrConvert">Convert to HEVC →</a>
             </div>
             <nav class="ds-jump" aria-label="Sections">
@@ -56,8 +57,9 @@
                 <button is="emby-button" type="button" class="raised" data-jump="DsSecStorage">3 Storage folders</button>
                 <button is="emby-button" type="button" class="raised" data-jump="DsSecShows">4 Shows</button>
                 <button is="emby-button" type="button" class="raised" data-jump="DsSecCats">5 Category rules</button>
-                <button is="emby-button" type="button" class="raised" data-jump="DsSecDevices">6 JDVR devices</button>
-                <button is="emby-button" type="button" class="raised" data-jump="DsSecActivity">7 Activity</button>
+                <button is="emby-button" type="button" class="raised" data-jump="DsSecAuto">6 Archive automatically</button>
+                <button is="emby-button" type="button" class="raised" data-jump="DsSecDevices">7 JDVR devices</button>
+                <button is="emby-button" type="button" class="raised" data-jump="DsSecActivity">8 Activity</button>
             </nav>
 
             <section id="DsSecDrive" class="ds-section">
@@ -195,8 +197,61 @@
                     <div id="DsSortNote" class="fieldDescription" style="margin-top:.6em;"></div>
                 </section>
 
+                <section id="DsSecAuto" class="ds-section">
+                    <div class="ds-head"><span class="ds-num">6</span><h2>Archive automatically</h2><span id="DsSumAuto" class="ds-sum"></span></div>
+                    <div class="ds-grid">
+                        <div class="selectContainer">
+                            <label class="selectLabel" for="DsAutoMode">Archive automatically</label>
+                            <select is="emby-select" id="DsAutoMode" class="emby-select-withcolor emby-select">
+                                <option value="off">Off</option>
+                                <option value="preview">Preview: only show what would move</option>
+                                <option value="active">Active: move for real</option>
+                            </select>
+                            <div class="fieldDescription">Checked with the space check: every few minutes and after each recording.</div>
+                        </div>
+                        <div class="inputContainer">
+                            <label class="inputLabel inputLabelUnfocused" for="DsAutoScanWait">Wait for the commercial scan up to (hours)</label>
+                            <input id="DsAutoScanWait" type="number" min="0" max="168" is="emby-input" />
+                            <div class="fieldDescription">After that it goes anyway (channels Comskip skips never get a scan). A failed scan counts as done. 0 = don't wait.</div>
+                        </div>
+                        <div class="inputContainer">
+                            <label class="inputLabel inputLabelUnfocused" for="DsAutoRerecordWait">Wait for a re-record up to (days)</label>
+                            <input id="DsAutoRerecordWait" type="number" min="0" max="90" is="emby-input" />
+                            <div class="fieldDescription">An incomplete recording Episode History is going to record again stays put so the new copy replaces it. 0 = don't wait.</div>
+                        </div>
+                        <div class="inputContainer">
+                            <label class="inputLabel inputLabelUnfocused" for="DsAutoPerRun">Most recordings moved per check</label>
+                            <input id="DsAutoPerRun" type="number" min="1" max="200" is="emby-input" />
+                            <div class="fieldDescription">One at a time; the rest wait for the next check, so a long first backlog doesn't hold everything up.</div>
+                        </div>
+                    </div>
+                    <div class="fieldDescription" style="margin-bottom:.8em;">
+                        Moves finished recordings from the recording folders to the storage folders (section 3) once they are processed:
+                        finished, joined if split, scanned for commercials, not waiting to be recorded again, and not being played.
+                        Rules are tried in order; the first one a recording matches decides. No folders chosen = any storage folder that
+                        takes the recording's kind, in the list's order, above its floor. Never moved: recordings marked Keep, live TV buffers,
+                        shows with their own folders (section 4) and recordings with their own storage choice.
+                    </div>
+                    <div id="DsAutoRules"></div>
+                    <button is="emby-button" type="button" id="DsAddAuto" class="raised emby-button"><span>+ Add rule</span></button>
+
+                    <div id="DsAutoTitle" class="ds-sub">Ready to move</div>
+                    <div id="DsAutoWarning" class="fieldDescription ds-warn"></div>
+                    <table>
+                        <thead><tr><th>Recording</th><th>Rule</th><th>Size</th><th>To</th></tr></thead>
+                        <tbody id="DsAutoReady"></tbody>
+                    </table>
+                    <div id="DsAutoNote" class="fieldDescription" style="margin-top:.6em;"></div>
+                    <div class="ds-sub" id="DsAutoWaitTitle">Waiting</div>
+                    <table>
+                        <thead><tr><th>Recording</th><th>Rule</th><th>Waiting for</th><th></th></tr></thead>
+                        <tbody id="DsAutoWaiting"></tbody>
+                    </table>
+                    <div id="DsAutoMore" class="fieldDescription" style="margin-top:.6em;"></div>
+                </section>
+
                 <section id="DsSecDevices" class="ds-section">
-                    <div class="ds-head"><span class="ds-num">6</span><h2>JDVR devices</h2><span id="DsSumDevices" class="ds-sum"></span></div>
+                    <div class="ds-head"><span class="ds-num">7</span><h2>JDVR devices</h2><span id="DsSumDevices" class="ds-sum"></span></div>
                     <div class="fieldDescription" style="margin-bottom:.8em;">
                         What each TV running JDVR may do. These only narrow what its signed-in user may do in Jellyfin
                         (Dashboard › Users); they never add to it. JDVR hides what a TV may not do, and the server refuses it.
@@ -218,7 +273,7 @@
             </form>
 
             <section id="DsSecActivity" class="ds-section">
-                <div class="ds-head"><span class="ds-num">7</span><h2>Activity</h2><span class="ds-sum">recent moves · marked Keep</span></div>
+                <div class="ds-head"><span class="ds-num">8</span><h2>Activity</h2><span class="ds-sum">recent moves · marked Keep</span></div>
                 <div class="ds-sub" style="margin-top:0;">Recent actions</div>
                 <div id="DsRecent" class="fieldDescription">None yet.</div>
                 <div class="ds-sub">Marked Keep</div>
@@ -236,6 +291,9 @@
             var rules = [];
             var shows = [];
             var lastShows = [];
+            var autoRules = [];
+            var showAllWaiting = false;
+            var lastAuto = null;
 
             function gb(bytes) { return (bytes / GB).toFixed(bytes < 10 * GB ? 1 : 0) + " GB"; }
             function esc(s) { var d = document.createElement("div"); d.textContent = s == null ? "" : String(s); return d.innerHTML; }
@@ -410,6 +468,134 @@
                 });
             }
 
+            var WHICH = { tv: "TV (not movies)", movies: "Movies", sports: "Sports", category: "Guide category", show: "One show", all: "Everything" };
+            var WATCHED = { any: "watched or not", watched: "once watched", everyone: "watched by everyone" };
+
+            function allFolderOptions(selected) {
+                var paths = targets.map(function (t) { return t.Path; }).filter(function (p) { return p; });
+                if (selected && paths.indexOf(selected) < 0) { paths.push(selected); }
+                return '<option value="">Choose a storage folder…</option>' + paths.map(function (p) {
+                    return '<option value="' + esc(p) + '"' + (p === selected ? ' selected' : '') + '>' + esc(p) + '</option>';
+                }).join("");
+            }
+
+            function renderAutoRules() {
+                var host = page.querySelector("#DsAutoRules");
+                host.innerHTML = "";
+                autoRules.forEach(function (r, i) {
+                    var box = document.createElement("div");
+                    box.className = "ds-card";
+                    var needsMatch = r.Which === "category" || r.Which === "show";
+                    box.innerHTML =
+                        '<div class="ds-row">' +
+                        '<span style="width:1.5em;opacity:.7;">' + (i + 1) + '.</span>' +
+                        '<label class="ds-check"><input type="checkbox" data-f="Enabled"' + (r.Enabled ? ' checked' : '') + '> on</label>' +
+                        '<input is="emby-input" type="text" data-f="Name" style="width:12em;font-weight:600;" placeholder="Name" value="' + esc(r.Name) + '">' +
+                        '<select is="emby-select" data-f="Which" class="emby-select-withcolor emby-select" style="width:11em;">' +
+                        Object.keys(WHICH).map(function (k) { return '<option value="' + k + '"' + (r.Which === k ? ' selected' : '') + '>' + WHICH[k] + '</option>'; }).join('') + '</select>' +
+                        (needsMatch ? '<input is="emby-input" type="text" data-f="Match"' + (r.Which === "show" ? ' list="DsKnownShows"' : '') +
+                            ' style="flex:1;min-width:12em;" placeholder="' + (r.Which === "show" ? 'Show, e.g. Jeopardy!' : 'Categories, e.g. News, Talk') + '" value="' + esc(r.Match) + '">' : '') +
+                        '<button is="emby-button" type="button" class="raised emby-button" data-a="up" title="Move up" style="margin-left:auto;">▲</button>' +
+                        '<button is="emby-button" type="button" class="raised emby-button" data-a="down" title="Move down">▼</button>' +
+                        '<button is="emby-button" type="button" class="raised emby-button" data-a="remove" title="Remove">✕</button>' +
+                        '</div><div class="ds-row" style="padding-left:2em;">' +
+                        '<span class="ds-note">when processed and</span>' +
+                        '<select is="emby-select" data-f="Watched" class="emby-select-withcolor emby-select" style="width:12em;">' +
+                        Object.keys(WATCHED).map(function (k) { return '<option value="' + k + '"' + (r.Watched === k ? ' selected' : '') + '>' + WATCHED[k] + '</option>'; }).join('') + '</select>' +
+                        '<span class="ds-note">, at least</span>' +
+                        '<input is="emby-input" type="number" min="0" max="3650" data-f="AfterDays" style="width:5em;" value="' + esc(r.AfterDays) + '">' +
+                        '<span class="ds-note">days after recording</span>' +
+                        '</div>';
+                    r.Locations.forEach(function (path, j) {
+                        var row = document.createElement("div");
+                        row.className = "ds-row";
+                        row.style.paddingLeft = "2em";
+                        row.innerHTML = '<span class="ds-note" style="width:5em;">' + (j === 0 ? 'to' : 'then') + '</span>' +
+                            '<select is="emby-select" class="emby-select-withcolor emby-select" style="flex:1;min-width:16em;">' + allFolderOptions(path) + '</select>' +
+                            '<span style="min-width:7em;">' + (path ? targetNote(path) : '') + '</span>' +
+                            '<button is="emby-button" type="button" class="raised emby-button" title="Remove">✕</button>';
+                        row.querySelector("select").addEventListener("change", function (e) { r.Locations[j] = e.target.value; renderAutoRules(); });
+                        row.querySelector("button").addEventListener("click", function () { r.Locations.splice(j, 1); renderAutoRules(); });
+                        box.appendChild(row);
+                    });
+                    var add = document.createElement("div");
+                    add.className = "ds-row";
+                    add.style.paddingLeft = "2em";
+                    add.innerHTML = (r.Locations.length ? '' : '<span class="ds-note">to any storage folder that takes it</span>') +
+                        '<button is="emby-button" type="button" class="raised emby-button"><span>+ Folder</span></button>';
+                    add.querySelector("button").addEventListener("click", function () { r.Locations.push(""); renderAutoRules(); });
+                    box.appendChild(add);
+                    box.querySelectorAll("[data-f]").forEach(function (el) {
+                        el.addEventListener("change", function () {
+                            var f = el.getAttribute("data-f");
+                            r[f] = f === "Enabled" ? el.checked : f === "AfterDays" ? Math.max(0, parseInt(el.value, 10) || 0) : el.value.trim();
+                            if (f === "Which") { renderAutoRules(); }
+                            summarize();
+                        });
+                    });
+                    box.querySelectorAll("[data-a]").forEach(function (b) {
+                        b.addEventListener("click", function () {
+                            var a = b.getAttribute("data-a");
+                            if (a === "remove") { autoRules.splice(i, 1); }
+                            if (a === "up" && i > 0) { autoRules.splice(i - 1, 0, autoRules.splice(i, 1)[0]); }
+                            if (a === "down" && i < autoRules.length - 1) { autoRules.splice(i + 1, 0, autoRules.splice(i, 1)[0]); }
+                            renderAutoRules();
+                            summarize();
+                        });
+                    });
+                    host.appendChild(box);
+                });
+            }
+
+            function renderAuto(auto) {
+                lastAuto = auto;
+                var ready = page.querySelector("#DsAutoReady");
+                var waiting = page.querySelector("#DsAutoWaiting");
+                var title = page.querySelector("#DsAutoTitle");
+                var note = page.querySelector("#DsAutoNote");
+                var more = page.querySelector("#DsAutoMore");
+                ready.innerHTML = "";
+                waiting.innerHTML = "";
+                more.innerHTML = "";
+                page.querySelector("#DsAutoWarning").textContent = (auto && auto.Mode !== "off" && auto.Warning) || "";
+                if (!auto || auto.Mode === "off") {
+                    title.textContent = "Ready to move";
+                    note.textContent = auto ? "Archive automatically is off: nothing is checked or moved. Choose Preview to see what the rules would do." : "Not checked yet. Use Check now.";
+                    page.querySelector("#DsAutoWaitTitle").textContent = "Waiting";
+                    return;
+                }
+                title.textContent = auto.Mode === "active" ? "Moving now" : "Would move now (preview: nothing done)";
+                (auto.Items || []).forEach(function (it) {
+                    var tr = document.createElement("tr");
+                    tr.style.borderTop = "1px solid rgba(128,128,128,.2)";
+                    tr.innerHTML = '<td style="padding:.3em;">' + esc(it.Name) + '</td><td>' + esc(it.Rule) + '</td><td>' + gb(it.Bytes) + '</td><td>' + esc(it.Destination) + '</td>';
+                    ready.appendChild(tr);
+                });
+                var lines = [];
+                if (!(auto.Items || []).length) { lines.push("Nothing is ready to move."); }
+                lines.push(auto.Matched + " recording(s) in the recording folders match a rule · checked " + new Date(auto.CreatedUtc).toLocaleString());
+                (auto.Failed || []).forEach(function (f) { lines.push("Not moved (fix it, then restart the server to retry): " + f.Name + " · " + f.Why); });
+                note.textContent = lines.join("\n");
+                var list = auto.Waiting || [];
+                page.querySelector("#DsAutoWaitTitle").textContent = "Waiting (" + list.length + ")";
+                var shown = showAllWaiting ? list : list.slice(0, 25);
+                shown.forEach(function (it) {
+                    var tr = document.createElement("tr");
+                    tr.style.borderTop = "1px solid rgba(128,128,128,.2)";
+                    tr.innerHTML = '<td style="padding:.3em;">' + esc(it.Name) + '</td><td>' + esc(it.Rule) + '</td><td>' + esc(it.Why) + '</td>' +
+                        '<td>' + (it.Why === "marked Keep" ? '' : '<button is="emby-button" type="button" class="raised emby-button" style="padding:.2em .8em;" title="Never move or delete this recording">Keep</button>') + '</td>';
+                    var b = tr.querySelector("button");
+                    if (b) { b.addEventListener("click", function () { api("POST", "JellyDvrSpace/Keep/" + it.ItemId).then(run); }); }
+                    waiting.appendChild(tr);
+                });
+                if (list.length > shown.length) {
+                    more.innerHTML = '<button is="emby-button" type="button" class="raised emby-button">Show all ' + list.length + '</button>';
+                    more.querySelector("button").addEventListener("click", function () { showAllWaiting = true; renderAuto(lastAuto); });
+                } else if (!list.length) {
+                    more.textContent = "Nothing is waiting.";
+                }
+            }
+
             function badge(id, label, mode) {
                 var el = page.querySelector("#" + id);
                 el.textContent = label + ": " + ({ active: "Active", preview: "Preview", off: "Off" }[mode] || mode);
@@ -419,6 +605,10 @@
             function summarize() {
                 badge("DsBadgeSpace", "Space manager", page.querySelector("#DsMode").value);
                 badge("DsBadgeSort", "Sorting", page.querySelector("#DsSortMode").value);
+                badge("DsBadgeAuto", "Archive automatically", page.querySelector("#DsAutoMode").value);
+                var autoOn = autoRules.filter(function (r) { return r.Enabled; }).length;
+                page.querySelector("#DsSumAuto").textContent = ({ off: "off", preview: "preview", active: "active" }[page.querySelector("#DsAutoMode").value]) +
+                    " · " + autoOn + " rule" + (autoOn === 1 ? "" : "s") + " on";
                 var used = targets.filter(function (t) { return t.Path; });
                 var room = used.filter(function (t) { return t.MakeRoom; }).length;
                 page.querySelector("#DsSumStorage").textContent = used.length + " folder" + (used.length === 1 ? "" : "s") + " · " + room + " used when the drive is low";
@@ -469,8 +659,10 @@
             function renderStatus(s) {
                 lastTargets = (s.Plan && s.Plan.Targets) || [];
                 renderSort(s.Sort);
+                renderAuto(s.AutoArchive);
                 renderTargets();
                 renderShows();
+                renderAutoRules();
                 var plan = s.Plan;
                 var drive = page.querySelector("#DsDrive");
                 if (!plan) {
@@ -632,6 +824,15 @@
                         return { Show: sh.Show, Enabled: sh.Enabled !== false, Locations: (sh.Locations || []).slice() };
                     });
                     renderShows();
+                    page.querySelector("#DsAutoMode").value = config.AutoArchiveMode || "off";
+                    page.querySelector("#DsAutoScanWait").value = config.AutoArchiveScanWaitHours == null ? 12 : config.AutoArchiveScanWaitHours;
+                    page.querySelector("#DsAutoRerecordWait").value = config.AutoArchiveRerecordWaitDays == null ? 14 : config.AutoArchiveRerecordWaitDays;
+                    page.querySelector("#DsAutoPerRun").value = config.AutoArchivePerRun || 10;
+                    autoRules = (config.AutoArchiveRules || []).map(function (r) {
+                        return { Name: r.Name || "", Enabled: r.Enabled !== false, Which: r.Which || "tv", Match: r.Match || "", Watched: r.Watched || "any",
+                            AfterDays: r.AfterDays || 0, Locations: (r.Locations || []).slice() };
+                    });
+                    renderAutoRules();
                     summarize();
                     Dashboard.hideLoadingMsg();
                 });
@@ -656,6 +857,12 @@
                 summarize();
             });
 
+            page.querySelector("#DsAddAuto").addEventListener("click", function () {
+                autoRules.push({ Name: "", Enabled: true, Which: "tv", Match: "", Watched: "watched", AfterDays: 0, Locations: [] });
+                renderAutoRules();
+                summarize();
+            });
+
             page.querySelector("#DsRun").addEventListener("click", run);
 
             page.querySelectorAll("[data-jump]").forEach(function (b) {
@@ -663,7 +870,7 @@
                     page.querySelector("#" + b.getAttribute("data-jump")).scrollIntoView({ behavior: "smooth", block: "start" });
                 });
             });
-            ["#DsMode", "#DsSortMode"].forEach(function (id) { page.querySelector(id).addEventListener("change", summarize); });
+            ["#DsMode", "#DsSortMode", "#DsAutoMode"].forEach(function (id) { page.querySelector(id).addEventListener("change", summarize); });
 
             page.querySelector("#DvrSpaceConfigForm").addEventListener("submit", function (e) {
                 e.preventDefault();
@@ -683,6 +890,15 @@
                     config.CategoryRules = rules.filter(function (r) { return r.Name || r.Categories; });
                     config.ShowLocations = shows.filter(function (sh) { return sh.Show; }).map(function (sh) {
                         return { Show: sh.Show, Enabled: sh.Enabled, KeepFreeGb: 0, Locations: sh.Locations.filter(function (l) { return l; }) };
+                    });
+                    config.AutoArchiveMode = page.querySelector("#DsAutoMode").value;
+                    function num(id, def, max) { var v = parseInt(page.querySelector(id).value, 10); return isNaN(v) ? def : Math.min(max, Math.max(0, v)); }
+                    config.AutoArchiveScanWaitHours = num("#DsAutoScanWait", 12, 168);
+                    config.AutoArchiveRerecordWaitDays = num("#DsAutoRerecordWait", 14, 90);
+                    config.AutoArchivePerRun = Math.max(1, num("#DsAutoPerRun", 10, 200));
+                    config.AutoArchiveRules = autoRules.map(function (r) {
+                        return { Name: r.Name, Enabled: r.Enabled, Which: r.Which, Match: r.Match, Watched: r.Watched, AfterDays: r.AfterDays,
+                            Locations: r.Locations.filter(function (l) { return l; }) };
                     });
                     function rightsOf(d) {
                         var o = {};
