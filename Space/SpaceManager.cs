@@ -85,6 +85,7 @@ public sealed partial class SpaceManager : BackgroundService
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         _libraryManager.ItemAdded += OnItemAdded;
+        RecordingFileOps.FileMoved += OnFileMoved;
         _soon = new Timer(_ => _ = RunSafeAsync("recording finished", stoppingToken), null, Timeout.Infinite, Timeout.Infinite);
         // Every minute: tie recordings that just started to the storage choices made for them in the guide.
         _choices = new Timer(_ => NoteChoicesSafe(), null, TimeSpan.FromSeconds(30), TimeSpan.FromMinutes(1));
@@ -104,6 +105,7 @@ public sealed partial class SpaceManager : BackgroundService
         finally
         {
             _libraryManager.ItemAdded -= OnItemAdded;
+            RecordingFileOps.FileMoved -= OnFileMoved;
             _soon.Dispose();
             _choices.Dispose();
         }
