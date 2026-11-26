@@ -255,6 +255,15 @@ public class PluginConfiguration : BasePluginConfiguration
     /// <summary>Archive locations, tried in order; the first with room gets the recording.</summary>
     public ArchiveTarget[] ArchiveTargets { get; set; } = Array.Empty<ArchiveTarget>();
 
+    /// <summary>A storage folder added from the folder picker keeps this share of its drive free (its floor).</summary>
+    public int NewFolderKeepFreePercent { get; set; } = 10;
+
+    /// <summary>A storage folder added from the folder picker starts with "Use when recording drive is low" ticked.</summary>
+    public bool NewFolderMakeRoom { get; set; }
+
+    /// <summary>The folder picker offers "Make TV and Movies folders here" ticked: one storage folder for each.</summary>
+    public bool NewFolderSplitKinds { get; set; } = true;
+
     /// <summary>When every archive location is full or unreachable: "stop" (and warn) or "delete".</summary>
     public string WhenArchiveFull { get; set; } = WhenFullStop;
 

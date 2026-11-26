@@ -31,6 +31,22 @@
         #DvrSpaceConfigPage .ds-row button { margin: 0; }
         #DvrSpaceConfigPage .ds-note { font-size: .88em; opacity: .75; }
         #DvrSpaceConfigPage .ds-warn { color: #f5b544; }
+        #DvrSpaceConfigPage .ds-ok { color: #4ade80; }
+        #DvrSpaceConfigPage .ds-bar { display: inline-block; width: 7em; height: 6px; background: rgba(255,255,255,.12); border-radius: 3px; vertical-align: middle; margin: 0 .5em; overflow: hidden; }
+        #DvrSpaceConfigPage .ds-bar span { display: block; height: 100%; background: #00a4dc; }
+        #DvrSpaceConfigPage .ds-card.ds-card-warn { border: 1px solid rgba(245,181,68,.5); background: rgba(245,181,68,.07); }
+        #DvrSpaceConfigPage .ds-text { background: #141414; color: inherit; border: 1px solid #3a3a3a; border-radius: 4px; padding: .55em .7em; font: inherit; min-width: 0; }
+        #DvrSpaceConfigPage .ds-overlay { position: fixed; inset: 0; z-index: 999999; background: rgba(0,0,0,.6); display: flex; align-items: center; justify-content: center; padding: 1em; }
+        #DvrSpaceConfigPage .ds-dialog { background: #202020; border-radius: 10px; box-shadow: 0 20px 60px rgba(0,0,0,.6); width: min(46em, 100%); max-height: calc(100vh - 2em); overflow: auto; padding: 1.4em 1.6em; display: flex; flex-direction: column; gap: .8em; box-sizing: border-box; }
+        #DvrSpaceConfigPage .ds-dialog h2 { margin: 0; font-size: 1.4em; }
+        #DvrSpaceConfigPage .ds-dialog button { margin: 0; }
+        #DvrSpaceConfigPage .ds-pick-list { background: #161616; border-radius: 6px; max-height: 45vh; overflow: auto; display: flex; flex-direction: column; }
+        #DvrSpaceConfigPage .ds-pick-item { display: flex; align-items: center; gap: .8em; flex-wrap: wrap; width: 100%; text-align: left; background: none; border: 0; border-bottom: 1px solid #262626; color: inherit; font: inherit; padding: .7em .9em; cursor: pointer; }
+        #DvrSpaceConfigPage .ds-pick-item:hover, #DvrSpaceConfigPage .ds-pick-item:focus-visible { background: rgba(0,164,220,.14); outline: none; }
+        #DvrSpaceConfigPage .ds-pick-name { flex: 1; min-width: 12em; }
+        #DvrSpaceConfigPage .ds-pick-free { font-size: .85em; opacity: .85; display: flex; align-items: center; }
+        #DvrSpaceConfigPage .ds-lib-row { background: #161616; border-radius: 6px; padding: .8em 1em; display: flex; flex-direction: column; gap: .5em; }
+        #DvrSpaceConfigPage .ds-chip { font-size: .8em; background: #2f2f2f; border-radius: 999px; padding: .2em .7em; }
         #DvrSpaceConfigPage .ds-check { display: flex; align-items: center; gap: .4em; cursor: pointer; }
         #DvrSpaceConfigPage .ds-check input { width: 1.15em; height: 1.15em; accent-color: #00a4dc; margin: 0; }
         #DvrSpaceConfigPage .ds-save { position: sticky; bottom: 0; z-index: 5; display: flex; align-items: center; gap: 1em; padding: .8em 0; margin-bottom: 2em; background: var(--jf-palette-background-default, #101010); border-top: 1px solid rgba(255,255,255,.12); }
@@ -143,9 +159,21 @@
                         in if it would leave less free than that. Folders ticked "Use when recording drive is low" are used by the space manager, in this order,
                         for the kinds they take; the shows below pick their folders from this list. Each folder must be inside a
                         library, or moved recordings would disappear from Jellyfin. Recordings keep their show / season folders below it.
+                        "+ Add folder" picks one from the drives the server sees; "Add to library…" puts a folder in a library.
                     </div>
                     <div id="DsTargets"></div>
-                    <button is="emby-button" type="button" id="DsAddTarget" class="raised emby-button"><span>+ Add folder</span></button>
+                    <div class="ds-row">
+                        <button is="emby-button" type="button" id="DsAddTarget" class="raised emby-button"><span>+ Add folder</span></button>
+                        <span id="DsStorageMsg" class="ds-ok" role="status"></span>
+                    </div>
+                    <div class="ds-row ds-note" style="margin-top:.9em;">
+                        <span>New folders start with: keep free</span>
+                        <input type="number" id="DsNewPct" class="ds-text" min="0" max="90" style="width:4.5em;" aria-label="Keep free, percent of the drive">
+                        <span>% of their drive ·</span>
+                        <label class="ds-check"><input type="checkbox" id="DsNewMakeRoom"> Use when recording drive is low</label>
+                        <span>·</span>
+                        <label class="ds-check"><input type="checkbox" id="DsNewSplit"> Make TV and Movies folders (ticked in the picker)</label>
+                    </div>
                     <div class="inputContainer" style="margin-top:1.2em;">
                         <input is="emby-input" type="text" id="DsSportsCategories" label="Guide categories that make a recording sports" />
                         <div class="fieldDescription">
@@ -303,11 +331,301 @@
 
             var lastTargets = [];
 
-            function targetNote(path) {
-                var t = lastTargets.filter(function (x) { return x.Path === (path || "").replace(/\/+$/, ""); })[0];
+            // ---- storage folder status, picker, Add to library ----
+            var folderStatus = {};
+            var statusTimer = null;
+
+            function norm(p) { var v = (p || "").trim(); return v.length > 1 ? v.replace(/\/+$/, "") : v; }
+            function size(b) { return b >= 1024 * GB ? (b / 1024 / GB).toFixed(2) + " TB" : gb(b); }
+            function bar(free, total) {
+                if (!total) { return ""; }
+                var used = Math.max(0, Math.min(100, Math.round(100 * (1 - free / total))));
+                return '<span class="ds-bar" title="' + used + '% used"><span style="width:' + used + '%"></span></span>';
+            }
+            function apiJson(method, path, body) {
+                return ApiClient.ajax({ type: method, url: ApiClient.getUrl(path), data: JSON.stringify(body), contentType: "application/json", dataType: "json" });
+            }
+            function errText(e) {
+                if (typeof e === "string") { return Promise.resolve(e); }
+                if (e && typeof e.text === "function") {
+                    return e.text().then(function (t) { return (t || "").replace(/^"|"$/g, "") || ("Failed (" + e.status + ")"); }, function () { return "Failed."; });
+                }
+                return Promise.resolve("Failed.");
+            }
+            function statusOf(path) {
+                var p = norm(path);
+                return folderStatus[p] || lastTargets.filter(function (x) { return x.Path === p; })[0];
+            }
+
+            function targetNote(path, i) {
+                var t = statusOf(path);
                 if (!t) { return ""; }
-                if (t.Problem) { return '<span class="ds-warn">' + esc(t.Problem) + '</span>'; }
-                return t.FreeBytes == null ? "" : '<span class="ds-note">' + gb(t.FreeBytes) + ' free' + (t.TotalBytes ? ' of ' + gb(t.TotalBytes) : '') + '</span>';
+                if (!t.Reachable) { return '<span class="ds-warn">⚠ ' + esc(t.Problem || "not found") + '</span>'; }
+                if (!t.InLibrary) {
+                    if (i == null) { return '<span class="ds-warn">⚠ not in any library</span>'; }
+                    return '<span class="ds-warn">⚠ Not in any library: moved recordings would vanish</span>' +
+                        '<button is="emby-button" type="button" class="raised button-submit emby-button" data-lib="' + i + '">Add to library…</button>';
+                }
+                var html = t.Problem ? '<span class="ds-warn">⚠ ' + esc(t.Problem) + '</span>'
+                    : '<span class="ds-ok">✓ in ' + esc(t.Library || "a library") + '</span>';
+                if (t.FreeBytes != null) {
+                    html += '<span class="ds-note" style="display:flex;align-items:center;">' + bar(t.FreeBytes, t.TotalBytes) + size(t.FreeBytes) + ' free</span>';
+                }
+                return html;
+            }
+
+            function fillNotes() {
+                page.querySelectorAll("#DsTargets [data-note]").forEach(function (el) {
+                    var i = parseInt(el.getAttribute("data-note"), 10);
+                    var t = targets[i];
+                    if (!t) { return; }
+                    el.innerHTML = targetNote(t.Path, i);
+                    var st = statusOf(t.Path);
+                    el.closest(".ds-card").classList.toggle("ds-card-warn", !!(st && st.Reachable && !st.InLibrary));
+                });
+            }
+
+            function refreshFolderStatus() {
+                var list = targets.filter(function (t) { return norm(t.Path); })
+                    .map(function (t) { return { Path: norm(t.Path), Kind: t.Kind, KeepFreeGb: t.KeepFreeGb, MakeRoom: t.MakeRoom }; });
+                if (!list.length) { folderStatus = {}; fillNotes(); return Promise.resolve(); }
+                return apiJson("POST", "JellyDvrSpace/FolderStatus", { Folders: list }).then(function (r) {
+                    folderStatus = {};
+                    (r || []).forEach(function (st) { folderStatus[st.Path] = st; });
+                    fillNotes();
+                }, function () { /* keep the last status */ });
+            }
+            function queueStatus() { clearTimeout(statusTimer); statusTimer = setTimeout(refreshFolderStatus, 400); }
+
+            function showStorageMsg(text) { page.querySelector("#DsStorageMsg").textContent = text; }
+
+            function openDialog(html) {
+                var ov = document.createElement("div");
+                ov.className = "ds-overlay";
+                ov.innerHTML = '<div class="ds-dialog" role="dialog" aria-modal="true">' + html + '</div>';
+                var back = document.activeElement;
+                function close() { ov.remove(); document.removeEventListener("keydown", onKey, true); if (back && back.focus) { back.focus(); } }
+                function onKey(e) { if (e.key === "Escape") { e.stopPropagation(); e.preventDefault(); close(); } }
+                document.addEventListener("keydown", onKey, true);
+                ov.addEventListener("mousedown", function (e) { if (e.target === ov) { close(); } });
+                page.appendChild(ov);
+                return { el: ov, close: close, q: function (k) { return ov.querySelector('[data-p="' + k + '"]'); } };
+            }
+
+            // The folder picker. opts: { title, start, split (true/false: show the TV + Movies box; null: don't), onPick(cur, split) → Promise }
+            function openPicker(opts) {
+                var d = openDialog(
+                    '<h2>' + esc(opts.title) + '</h2>' +
+                    '<div class="ds-note">Folders as the Jellyfin server sees them. Drives show their free space.</div>' +
+                    '<div class="ds-row"><input type="text" class="ds-text" data-p="path" style="flex:1;font-family:monospace;" aria-label="Folder path">' +
+                    '<button is="emby-button" type="button" class="raised emby-button" data-p="go">Go</button>' +
+                    '<button is="emby-button" type="button" class="raised emby-button" data-p="up">↑ Up</button>' +
+                    '<button is="emby-button" type="button" class="raised emby-button" data-p="new">+ New folder</button></div>' +
+                    '<div class="ds-row" data-p="newrow" hidden><input type="text" class="ds-text" data-p="newname" placeholder="New folder name" style="flex:1;" aria-label="New folder name">' +
+                    '<button is="emby-button" type="button" class="raised button-submit emby-button" data-p="make">Make</button>' +
+                    '<button is="emby-button" type="button" class="raised emby-button" data-p="newcancel">Cancel</button></div>' +
+                    '<div class="ds-pick-list" data-p="list"></div>' +
+                    '<div class="ds-note" data-p="here"></div>' +
+                    (opts.split == null ? '' :
+                        '<label class="ds-check"><input type="checkbox" data-p="split"' + (opts.split ? ' checked' : '') + '>' +
+                        '<span><b>Make TV and Movies folders here</b>: one storage folder each. <span class="ds-note">Off: this folder itself, taking both.</span></span></label>') +
+                    '<div class="ds-note">Drive not listed? It has to be mounted on the server first (fstab / Samba); Space can\'t do that part.</div>' +
+                    '<div class="ds-row" style="justify-content:flex-end;"><span class="ds-warn" data-p="err" style="margin-right:auto;"></span>' +
+                    '<button is="emby-button" type="button" class="raised emby-button" data-p="cancel">Cancel</button>' +
+                    '<button is="emby-button" type="button" class="raised button-submit emby-button" data-p="use">Use this folder</button></div>');
+                var cur = null;
+                var first = true;
+
+                function render() {
+                    d.q("path").value = cur.Path;
+                    d.q("up").disabled = !cur.Parent;
+                    d.q("use").disabled = !!cur.Problem;
+                    d.q("err").textContent = "";
+                    var list = d.q("list");
+                    if (cur.Problem) {
+                        list.innerHTML = '<div class="ds-warn" style="padding:.8em;">' + esc(cur.Path + ": " + cur.Problem) + '</div>';
+                    } else if (!cur.Folders.length) {
+                        list.innerHTML = '<div class="ds-note" style="padding:.8em;">No folders inside.</div>';
+                    } else {
+                        list.innerHTML = cur.Folders.map(function (f, i) {
+                            var notes = [];
+                            if (f.Source) { notes.push(f.Source); }
+                            if (f.Library) { notes.push("in " + f.Library); }
+                            if (f.UsedBySpace) { notes.push("has storage folders"); } else if (f.IsDrive) { notes.push("not used by Space yet"); }
+                            var free = !f.IsDrive ? "" : f.NotResponding ? '<span class="ds-warn">not responding</span>'
+                                : f.TotalBytes ? bar(f.FreeBytes, f.TotalBytes) + size(f.FreeBytes) + " of " + size(f.TotalBytes) : "";
+                            return '<button type="button" class="ds-pick-item" data-i="' + i + '"><span class="ds-pick-name">' +
+                                (f.IsDrive ? '<b>' + esc(f.Name) + '</b>' : esc(f.Name)) +
+                                (notes.length ? ' <span class="ds-note">· ' + esc(notes.join(" · ")) + '</span>' : '') +
+                                '</span><span class="ds-pick-free">' + free + '</span></button>';
+                        }).join("") + (cur.Truncated ? '<div class="ds-note" style="padding:.6em .9em;">Only the first 500 folders are shown; type a path above.</div>' : '');
+                    }
+                    var here = [];
+                    if (!cur.Problem) {
+                        if (cur.TotalBytes) { here.push(size(cur.FreeBytes) + " free of " + size(cur.TotalBytes)); }
+                        here.push(cur.Library ? "in " + cur.Library : "not in a library yet");
+                        if (cur.Empty) { here.push("empty"); }
+                        if (cur.UsedBySpace) { here.push("already a storage folder"); }
+                    }
+                    d.q("here").textContent = here.length ? "This folder: " + here.join(" · ") : "";
+                }
+
+                function go(path) {
+                    d.q("list").innerHTML = '<div class="ds-note" style="padding:.8em;">Loading…</div>';
+                    return ApiClient.ajax({ type: "GET", url: ApiClient.getUrl("JellyDvrSpace/Folders", { path: path || "" }), dataType: "json" }).then(function (r) {
+                        // A row's path that doesn't exist yet: start at the nearest folder above it.
+                        if (first && r.Problem === "not found" && r.Parent) { return go(r.Parent); }
+                        first = false;
+                        cur = r;
+                        render();
+                    }, function (e) { errText(e).then(function (t) { d.q("err").textContent = t; }); });
+                }
+
+                d.q("list").addEventListener("click", function (e) {
+                    var b = e.target.closest("[data-i]");
+                    if (b && cur) { go(cur.Folders[parseInt(b.getAttribute("data-i"), 10)].Path); }
+                });
+                d.q("go").addEventListener("click", function () { go(d.q("path").value); });
+                d.q("path").addEventListener("keydown", function (e) { if (e.key === "Enter") { e.preventDefault(); go(d.q("path").value); } });
+                d.q("up").addEventListener("click", function () { if (cur && cur.Parent) { go(cur.Parent); } });
+                d.q("new").addEventListener("click", function () { d.q("newrow").hidden = false; d.q("newname").focus(); });
+                d.q("newcancel").addEventListener("click", function () { d.q("newrow").hidden = true; d.q("newname").value = ""; });
+                function make() {
+                    var name = d.q("newname").value.trim();
+                    if (!cur || !name || name.indexOf("/") >= 0 || name === "." || name === "..") { d.q("err").textContent = "Type a folder name (no /)."; return; }
+                    var path = (cur.Path === "/" ? "" : cur.Path) + "/" + name;
+                    apiJson("POST", "JellyDvrSpace/Folders", { Path: path }).then(function () {
+                        d.q("newrow").hidden = true; d.q("newname").value = "";
+                        go(path);
+                    }, function (e) { errText(e).then(function (t) { d.q("err").textContent = t; }); });
+                }
+                d.q("make").addEventListener("click", make);
+                d.q("newname").addEventListener("keydown", function (e) { if (e.key === "Enter") { e.preventDefault(); make(); } });
+                d.q("cancel").addEventListener("click", d.close);
+                d.q("use").addEventListener("click", function () {
+                    if (!cur || cur.Problem) { return; }
+                    d.q("use").disabled = true;
+                    Promise.resolve(opts.onPick(cur, d.q("split") ? d.q("split").checked : false)).then(d.close, function (e) {
+                        d.q("use").disabled = false;
+                        errText(e).then(function (t) { d.q("err").textContent = t; });
+                    });
+                });
+                go(opts.start);
+            }
+
+            function addFolderFromPicker() {
+                openPicker({
+                    title: "Pick a storage folder",
+                    start: "",
+                    split: page.querySelector("#DsNewSplit").checked,
+                    onPick: function (cur, split) {
+                        var pct = Math.min(90, Math.max(0, parseInt(page.querySelector("#DsNewPct").value, 10) || 0));
+                        var keep = cur.TotalBytes ? Math.max(1, Math.round(cur.TotalBytes / GB * pct / 100)) : 50;
+                        var makeRoom = page.querySelector("#DsNewMakeRoom").checked;
+                        var base = cur.Path === "/" ? "" : cur.Path;
+                        var wanted = split ? [{ Path: base + "/TV", Kind: "tv" }, { Path: base + "/Movies", Kind: "movies" }] : [{ Path: cur.Path, Kind: "both" }];
+                        wanted = wanted.filter(function (w) { return !targets.some(function (t) { return norm(t.Path) === w.Path; }); });
+                        if (!wanted.length) { return Promise.reject("That is already a storage folder."); }
+                        var made = split ? Promise.all(wanted.map(function (w) { return apiJson("POST", "JellyDvrSpace/Folders", { Path: w.Path }); })) : Promise.resolve();
+                        return made.then(function () {
+                            var added = wanted.map(function (w) {
+                                var t = { Path: w.Path, Kind: w.Kind, KeepFreeGb: keep, MakeRoom: makeRoom };
+                                targets.push(t);
+                                return t;
+                            });
+                            renderTargets();
+                            renderShows();
+                            summarize();
+                            showStorageMsg("Added " + added.map(function (t) { return t.Path; }).join(" and ") + ". Press Save to keep " + (added.length > 1 ? "them." : "it."));
+                            refreshFolderStatus().then(function () {
+                                var outside = added.filter(function (t) { var st = folderStatus[norm(t.Path)]; return st && st.Reachable && !st.InLibrary; });
+                                if (outside.length) { openLibraryDialog(outside); }
+                            });
+                        });
+                    }
+                });
+            }
+
+            function browseFor(i) {
+                var t = targets[i];
+                openPicker({
+                    title: "Pick a folder",
+                    start: norm(t.Path),
+                    split: null,
+                    onPick: function (cur) {
+                        t.Path = cur.Path;
+                        renderTargets();
+                        renderShows();
+                        summarize();
+                        queueStatus();
+                        return Promise.resolve();
+                    }
+                });
+            }
+
+            function libraryFits(kind, lib) {
+                var c = (lib.CollectionType || "").toLowerCase();
+                if (kind === "movies") { return c === "movies"; }
+                if (kind === "tv" || kind === "sports") { return c === "tvshows"; }
+                return c === "tvshows" || c === "movies" || c === "" || c === "mixed";
+            }
+            function libraryType(lib) { var c = (lib.CollectionType || "").toLowerCase(); return c === "tvshows" ? "Shows" : c === "movies" ? "Movies" : "Mixed"; }
+
+            function openLibraryDialog(list) {
+                ApiClient.getVirtualFolders().then(function (libs) {
+                    var kindName = { tv: "TV", movies: "Movies", sports: "Sports", both: "TV + Movies" };
+                    var rows = list.map(function (t, n) {
+                        var options = libs.filter(function (l) { return libraryFits(t.Kind, l); });
+                        // Suggest the library that already holds storage folders of the same kind.
+                        var counts = {};
+                        targets.forEach(function (o) {
+                            var st = folderStatus[norm(o.Path)];
+                            if (o !== t && st && st.Library && o.Kind === t.Kind) { counts[st.Library] = (counts[st.Library] || 0) + 1; }
+                        });
+                        options.sort(function (a, b) { return (counts[b.Name] || 0) - (counts[a.Name] || 0); });
+                        return '<div class="ds-lib-row"><div class="ds-row"><span style="flex:1;font-family:monospace;word-break:break-all;">' + esc(norm(t.Path)) + '</span>' +
+                            '<span class="ds-chip">takes ' + esc(kindName[t.Kind] || t.Kind) + '</span></div>' +
+                            (options.length
+                                ? '<label class="ds-row">Library <select class="ds-text" data-p="lib' + n + '" style="flex:1;">' + options.map(function (l) {
+                                    return '<option value="' + esc(l.Name) + '">' + esc(l.Name + " · " + libraryType(l) + " · " + (l.Locations || []).length + " folder" + ((l.Locations || []).length === 1 ? "" : "s")) + '</option>';
+                                }).join("") + '</select></label>'
+                                : '<div class="ds-warn">No ' + (t.Kind === "movies" ? "Movies" : "Shows") + ' library yet: make one in Dashboard › Libraries first.</div>') +
+                            '</div>';
+                    }).join("");
+                    var d = openDialog('<h2>Add to a library</h2>' +
+                        '<div class="ds-note">Recordings moved here need to stay visible in Jellyfin. The list offers libraries of the matching type (Shows for TV and Sports, Movies for Movies).</div>' +
+                        rows +
+                        '<label class="ds-check"><input type="checkbox" data-p="scan"> Scan the library now <span class="ds-note">(off: a new folder is empty, nothing to find)</span></label>' +
+                        '<div class="ds-row" style="justify-content:flex-end;"><span class="ds-warn" data-p="err" style="margin-right:auto;"></span>' +
+                        '<button is="emby-button" type="button" class="raised emby-button" data-p="cancel">Cancel</button>' +
+                        '<button is="emby-button" type="button" class="raised button-submit emby-button" data-p="add">Add to ' + (list.length > 1 ? "libraries" : "library") + '</button></div>');
+                    d.q("cancel").addEventListener("click", d.close);
+                    d.q("add").addEventListener("click", function () {
+                        var scan = d.q("scan").checked;
+                        var jobs = list.map(function (t, n) { var sel = d.q("lib" + n); return sel ? { Path: norm(t.Path), Library: sel.value } : null; }).filter(function (j) { return j; });
+                        if (!jobs.length) { d.close(); return; }
+                        d.q("add").disabled = true;
+                        var done = [];
+                        jobs.reduce(function (p, j) {
+                            return p.then(function () {
+                                return ApiClient.ajax({
+                                    type: "POST",
+                                    url: ApiClient.getUrl("Library/VirtualFolders/Paths", { refreshLibrary: scan }),
+                                    data: JSON.stringify({ Name: j.Library, PathInfo: { Path: j.Path } }),
+                                    contentType: "application/json"
+                                }).then(function () { done.push(j.Path + " to " + j.Library); });
+                            });
+                        }, Promise.resolve()).then(function () {
+                            d.close();
+                            showStorageMsg("Added " + done.join(" and ") + "." + (targets.some(function (t) { return !lastTargets.some(function (x) { return x.Path === norm(t.Path); }); }) ? " Press Save to keep the storage folders." : ""));
+                            refreshFolderStatus();
+                        }, function (e) {
+                            d.q("add").disabled = false;
+                            errText(e).then(function (t) { d.q("err").textContent = (done.length ? "Added " + done.join(", ") + "; then: " : "") + t; });
+                            refreshFolderStatus();
+                        });
+                    });
+                });
             }
 
             function renderTargets() {
@@ -320,6 +638,7 @@
                         '<div class="ds-row">' +
                         '<span style="width:1.5em;opacity:.7;">' + (i + 1) + '.</span>' +
                         '<input is="emby-input" type="text" data-f="Path" style="flex:1;min-width:16em;" placeholder="/mnt/nas/TV" value="' + esc(t.Path) + '">' +
+                        '<button is="emby-button" type="button" class="raised emby-button" data-browse="' + i + '">Browse…</button>' +
                         '<select is="emby-select" data-f="Kind" class="emby-select-withcolor emby-select" style="width:8em;">' +
                         ['tv', 'movies', 'sports', 'both'].map(function (k) {
                             return '<option value="' + k + '"' + (t.Kind === k ? ' selected' : '') + '>' + { tv: 'TV', movies: 'Movies', sports: 'Sports', both: 'Both' }[k] + '</option>';
@@ -331,13 +650,13 @@
                         '<label class="ds-note">keep free</label>' +
                         '<input is="emby-input" type="number" min="0" data-f="KeepFreeGb" style="width:6em;" value="' + esc(t.KeepFreeGb) + '"><span class="ds-note">GB</span>' +
                         '<label class="ds-check" style="margin-left:1em;" title="The space manager may move recordings here to free the recordings drive"><input type="checkbox" data-f="MakeRoom"' + (t.MakeRoom ? ' checked' : '') + '> Use when recording drive is low</label>' +
-                        '<span style="margin-left:auto;">' + targetNote(t.Path) + '</span>' +
+                        '<span style="margin-left:auto;display:flex;align-items:center;gap:.6em;flex-wrap:wrap;" data-note="' + i + '"></span>' +
                         '</div>';
                     card.querySelectorAll("[data-f]").forEach(function (el) {
                         el.addEventListener("change", function () {
                             var f = el.getAttribute("data-f");
                             t[f] = f === "KeepFreeGb" ? (parseInt(el.value, 10) || 0) : f === "MakeRoom" ? el.checked : el.value.trim();
-                            if (f === "Path") { renderShows(); }
+                            if (f === "Path") { renderShows(); queueStatus(); }
                             summarize();
                         });
                     });
@@ -354,6 +673,7 @@
                     });
                     host.appendChild(card);
                 });
+                fillNotes();
             }
 
             function renderRules() {
@@ -814,6 +1134,11 @@
                     page.querySelector("#DsWhenFull").value = config.WhenArchiveFull || "stop";
                     targets = (config.ArchiveTargets || []).map(function (t) { return { Path: t.Path, Kind: (t.Kind || "both").toLowerCase(), KeepFreeGb: t.KeepFreeGb, MakeRoom: t.MakeRoom !== false }; });
                     renderTargets();
+                    refreshFolderStatus();
+                    page.querySelector("#DsNewPct").value = config.NewFolderKeepFreePercent == null ? 10 : config.NewFolderKeepFreePercent;
+                    page.querySelector("#DsNewMakeRoom").checked = !!config.NewFolderMakeRoom;
+                    page.querySelector("#DsNewSplit").checked = config.NewFolderSplitKinds !== false;
+                    showStorageMsg("");
                     page.querySelector("#DsSportsCategories").value = config.SportsCategories || "";
                     page.querySelector("#DsSortMode").value = config.SortMode || "preview";
                     rules = (config.CategoryRules || []).map(function (r) {
@@ -840,10 +1165,12 @@
                 loadDevices();
             });
 
-            page.querySelector("#DsAddTarget").addEventListener("click", function () {
-                targets.push({ Path: "", Kind: "both", KeepFreeGb: 50, MakeRoom: true });
-                renderTargets();
-                summarize();
+            page.querySelector("#DsAddTarget").addEventListener("click", addFolderFromPicker);
+            page.querySelector("#DsTargets").addEventListener("click", function (e) {
+                var b = e.target.closest("[data-browse]");
+                if (b) { browseFor(parseInt(b.getAttribute("data-browse"), 10)); return; }
+                var l = e.target.closest("[data-lib]");
+                if (l) { var t = targets[parseInt(l.getAttribute("data-lib"), 10)]; if (t) { openLibraryDialog([t]); } }
             });
 
             page.querySelector("#DsAddRule").addEventListener("click", function () {
@@ -885,6 +1212,10 @@
                     config.Order = page.querySelector("#DsOrder").value;
                     config.WhenArchiveFull = page.querySelector("#DsWhenFull").value;
                     config.ArchiveTargets = targets.filter(function (t) { return t.Path; });
+                    var pct = parseInt(page.querySelector("#DsNewPct").value, 10);
+                    config.NewFolderKeepFreePercent = isNaN(pct) ? 10 : Math.min(90, Math.max(0, pct));
+                    config.NewFolderMakeRoom = page.querySelector("#DsNewMakeRoom").checked;
+                    config.NewFolderSplitKinds = page.querySelector("#DsNewSplit").checked;
                     config.SportsCategories = page.querySelector("#DsSportsCategories").value;
                     config.SortMode = page.querySelector("#DsSortMode").value;
                     config.CategoryRules = rules.filter(function (r) { return r.Name || r.Categories; });
@@ -914,6 +1245,7 @@
                     config.NewDeviceRights = rightsOf(newDevices);
                     ApiClient.updatePluginConfiguration(pluginUniqueId, config).then(function (result) {
                         Dashboard.processPluginConfigurationUpdateResult(result);
+                        showStorageMsg("");
                         run();
                         loadDevices();
                     });

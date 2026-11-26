@@ -396,14 +396,20 @@ public sealed partial class SpaceManager : BackgroundService
         return plan;
     }
 
-    private List<TargetStatus> CheckTargets(PluginConfiguration cfg)
+    private List<TargetStatus> CheckTargets(PluginConfiguration cfg) =>
+        CheckFolders(cfg.ArchiveTargets ?? Array.Empty<ArchiveTarget>());
+
+    /// <summary>
+    /// Reachability, free space, library and problems for storage folders, saved or not (the settings
+    /// page checks rows before they are saved).
+    /// </summary>
+    public List<TargetStatus> CheckFolders(IEnumerable<ArchiveTarget> folders)
     {
-        var libraryPaths = _libraryManager.GetVirtualFolders()
-            .SelectMany(f => f.Locations ?? Array.Empty<string>())
-            .Select(p => p.TrimEnd('/'))
+        var libraries = _libraryManager.GetVirtualFolders()
+            .SelectMany(f => (f.Locations ?? Array.Empty<string>()).Select(l => (Name: f.Name, Path: l.TrimEnd('/'))))
             .ToList();
         var result = new List<TargetStatus>();
-        foreach (var t in cfg.ArchiveTargets ?? Array.Empty<ArchiveTarget>())
+        foreach (var t in folders)
         {
             var path = (t.Path ?? string.Empty).Trim().TrimEnd('/');
             if (path.Length == 0)
@@ -417,8 +423,9 @@ public sealed partial class SpaceManager : BackgroundService
                 Kind = (t.Kind ?? "both").ToLowerInvariant(),
                 KeepFreeGb = Math.Max(0, t.KeepFreeGb),
                 MakeRoom = t.MakeRoom,
-                InLibrary = libraryPaths.Any(l => path == l || IsUnder(path, l))
+                Library = libraries.FirstOrDefault(l => path == l.Path || IsUnder(path, l.Path)).Name
             };
+            status.InLibrary = status.Library is not null;
             var free = WithTimeout(() => Directory.Exists(path) ? FreeSpace(path) : null);
             status.Reachable = free.Completed && free.Value is not null;
             status.FreeBytes = free.Value?.Free;
@@ -626,6 +633,9 @@ public sealed partial class SpaceManager : BackgroundService
         public bool Reachable { get; set; }
 
         public bool InLibrary { get; set; }
+
+        /// <summary>The library the folder is in (its first, if several hold it).</summary>
+        public string? Library { get; set; }
 
         public long? FreeBytes { get; set; }
 
