@@ -451,7 +451,8 @@
                             var notes = [];
                             if (f.Source) { notes.push(f.Source); }
                             if (f.Library) { notes.push("in " + f.Library); }
-                            if (f.UsedBySpace) { notes.push("has storage folders"); } else if (f.IsDrive) { notes.push("not used by Space yet"); }
+                            if (f.HoldsRecordings) { notes.push("recording folders"); }
+                            if (f.UsedBySpace) { notes.push("has storage folders"); } else if (f.IsDrive && !f.HoldsRecordings) { notes.push("not used by Space yet"); }
                             var free = !f.IsDrive ? "" : f.NotResponding ? '<span class="ds-warn">not responding</span>'
                                 : f.TotalBytes ? bar(f.FreeBytes, f.TotalBytes) + size(f.FreeBytes) + " of " + size(f.TotalBytes) : "";
                             return '<button type="button" class="ds-pick-item" data-i="' + i + '"><span class="ds-pick-name">' +
@@ -466,7 +467,9 @@
                         here.push(cur.Library ? "in " + cur.Library : "not in a library yet");
                         if (cur.Empty) { here.push("empty"); }
                         if (cur.UsedBySpace) { here.push("already a storage folder"); }
+                        if (cur.InRecordings) { here.push("overlaps the recording folders: can't be a storage folder"); }
                     }
+                    d.q("use").disabled = !!cur.Problem || !!cur.InRecordings;
                     d.q("here").textContent = here.length ? "This folder: " + here.join(" · ") : "";
                 }
 

@@ -76,6 +76,7 @@ public sealed class FoldersController : ControllerBase
         var libraries = _libraryManager.GetVirtualFolders()
             .SelectMany(f => (f.Locations ?? Array.Empty<string>()).Select(l => (f.Name, Path: l.TrimEnd('/'))))
             .ToList();
+        var recordingRoots = _manager.ManagedRoots().Select(r => r.TrimEnd('/')).ToList();
 
         var folders = listing.Value
             .Select(d => d.TrimEnd('/'))
@@ -96,6 +97,7 @@ public sealed class FoldersController : ControllerBase
                     TotalBytes = space.Value?.Total,
                     NotResponding = source is not null && !space.Completed,
                     UsedBySpace = storage.Any(s => s == d || IsUnder(s, d)),
+                    HoldsRecordings = recordingRoots.Any(r => r == d || IsUnder(r, d) || IsUnder(d, r)),
                     Library = libraries.FirstOrDefault(l => l.Path == d || IsUnder(d, l.Path)).Name
                 };
             })
@@ -111,6 +113,7 @@ public sealed class FoldersController : ControllerBase
             Empty = listing.Value.Count == 0 && SpaceManager.WithTimeout(() => (bool?)!Directory.EnumerateFileSystemEntries(path).Any()).Value == true,
             Library = libraries.FirstOrDefault(l => l.Path == path || IsUnder(path, l.Path)).Name,
             UsedBySpace = storage.Any(s => s == path),
+            InRecordings = recordingRoots.Any(r => r == path || IsUnder(path, r) || IsUnder(r, path)),
             Truncated = listing.Value.Count > MaxFolders,
             Folders = folders
         });
